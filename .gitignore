@@ -4,3 +4,4 @@ plots/
 results/
 eval_dataset/
 launcher_colab.ipynb
+.DS_Store
