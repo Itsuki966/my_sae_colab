@@ -272,6 +272,37 @@ class SycophancyAnalyzer:
         except (StopIteration, AttributeError):
             return self.device
     
+    def get_model_device(self) -> str:
+        """
+        モデルの現在のデバイスを安全に取得
+        
+        Returns:
+            デバイス文字列 ("cuda", "cpu", "mps", etc.)
+        """
+        if self.model is None:
+            return self.device
+        
+        try:
+            # 方法1: パラメータからデバイスを取得
+            model_device = str(next(self.model.parameters()).device)
+            return model_device
+        except (StopIteration, AttributeError):
+            try:
+                # 方法2: cfg属性からデバイスを取得
+                if hasattr(self.model, 'cfg') and hasattr(self.model.cfg, 'device'):
+                    return str(self.model.cfg.device)
+            except AttributeError:
+                pass
+            
+            try:
+                # 方法3: 直接device属性にアクセス（古いバージョン用）
+                return str(self.model.device)
+            except AttributeError:
+                pass
+            
+            # フォールバック: 設定されたデバイスを返す
+            return self.device
+    
     def get_model_memory_footprint(self) -> dict:
         """モデルのメモリ使用量を取得（Llama3で重要）"""
         memory_info = {}
@@ -430,18 +461,14 @@ class SycophancyAnalyzer:
             print(f"✅ {self.config.model.name} を読み込み完了")
             
             # モデル実デバイスでself.deviceを更新
-            try:
-                self.device = str(self.model.device)
-            except Exception:
-                if hasattr(self.model, 'cfg') and hasattr(self.model.cfg, 'device'):
-                    self.device = str(self.model.cfg.device)
+            self.device = self.get_model_device()
             
             # SAEの読み込み
             print("🔄 SAE読み込み中...")
             sae_result = SAE.from_pretrained(
                 release=self.config.model.sae_release,
                 sae_id=self.config.model.sae_id,
-                device=str(self.device)
+                device=self.get_model_device()
             )
             
             if isinstance(sae_result, tuple):
@@ -456,7 +483,7 @@ class SycophancyAnalyzer:
             # Tokenizerの取得
             self.tokenizer = self.model.tokenizer
             
-            print(f"🔧 モデル配置先: {self.model.device}")
+            print(f"🔧 モデル配置先: {self.get_model_device()}")
             print(f"🔧 SAE配置先: {self.sae_device}")
             
             return True
@@ -521,18 +548,14 @@ class SycophancyAnalyzer:
             
             print(f"✅ {self.config.model.name} を読み込み完了")
             # モデル実デバイスでself.deviceを更新
-            try:
-                self.device = str(self.model.device)
-            except Exception:
-                if hasattr(self.model, 'cfg') and hasattr(self.model.cfg, 'device'):
-                    self.device = str(self.model.cfg.device)
+            self.device = self.get_model_device()
             
             # SAEの読み込み
             print("🔄 SAE読み込み中...")
             sae_result = SAE.from_pretrained(
                 release=self.config.model.sae_release,
                 sae_id=self.config.model.sae_id,
-                device=str(self.device)
+                device=self.get_model_device()
             )
             
             if isinstance(sae_result, tuple):
@@ -607,7 +630,7 @@ class SycophancyAnalyzer:
             sae_result = SAE.from_pretrained(
                 release=self.config.model.sae_release,
                 sae_id=self.config.model.sae_id,
-                device=str(self.model.device)
+                device=self.get_model_device()
             )
             
             if isinstance(sae_result, tuple):
@@ -622,8 +645,8 @@ class SycophancyAnalyzer:
             # Tokenizerの取得
             self.tokenizer = self.model.tokenizer
             
-            print(f"� モデル配置先: {self.model.device}")
-            print(f"� SAE配置先: {self.sae_device}")
+            print(f"🎯 モデル配置先: {self.get_model_device()}")
+            print(f"🎯 SAE配置先: {self.sae_device}")
             
             return True
             
@@ -656,11 +679,7 @@ class SycophancyAnalyzer:
             
             print(f"✅ モデル {self.config.model.name} を読み込み完了")
             # 実デバイスでself.deviceを同期
-            try:
-                self.device = str(self.model.device)
-            except Exception:
-                if hasattr(self.model, 'cfg') and hasattr(self.model.cfg, 'device'):
-                    self.device = str(self.model.cfg.device)
+            self.device = self.get_model_device()
             
             # SAEの読み込み
             print("🔄 SAEを読み込み中...")
@@ -1031,14 +1050,7 @@ class SycophancyAnalyzer:
         """プロンプトのトークン化"""
         try:
             # 生成に使用するモデル側デバイスを優先
-            target_device = None
-            try:
-                target_device = str(self.model.device)
-            except Exception:
-                if hasattr(self.model, 'cfg') and hasattr(self.model.cfg, 'device'):
-                    target_device = str(self.model.cfg.device)
-            if target_device is None:
-                target_device = self.device
+            target_device = self.get_model_device()
             
             # Llama3の場合はBOSトークンを追加
             if 'llama' in self.config.model.name.lower():
@@ -1070,14 +1082,7 @@ class SycophancyAnalyzer:
         
         try:
             # 入力テンソルをモデルの実デバイスへ整合
-            model_device = None
-            try:
-                model_device = str(self.model.device)
-            except Exception:
-                if hasattr(self.model, 'cfg') and hasattr(self.model.cfg, 'device'):
-                    model_device = str(self.model.cfg.device)
-            if model_device is None:
-                model_device = self.device
+            model_device = self.get_model_device()
             if str(inputs.device) != model_device:
                 inputs = inputs.to(model_device)
             # tutorial_2_0.ipynbの実装を参考にしたシンプルな生成設定
@@ -1140,14 +1145,7 @@ class SycophancyAnalyzer:
         try:
             with torch.no_grad():
                 # まずモデルの実デバイスに整合
-                model_device = None
-                try:
-                    model_device = str(self.model.device)
-                except Exception:
-                    if hasattr(self.model, 'cfg') and hasattr(self.model.cfg, 'device'):
-                        model_device = str(self.model.cfg.device)
-                if model_device is None:
-                    model_device = self.device
+                model_device = self.get_model_device()
                 generated_tokens = inputs.clone().to(model_device)
                 
                 for step in range(min(10, self.config.generation.max_new_tokens)):  # 最大10トークンに制限
