@@ -30,7 +30,7 @@ accelerate>=0.24.0,<0.35.0
 
 # SAE Lens - 迎合性分析の核心ライブラリ
 sae-lens>=3.0.0
-transformer-lens>=2.0.0,<2.15.0
+transformer-lens>=2.5.0,<3.0.0
 
 # ========================================
 # Phase 3: Data & Computation (基本機能)
@@ -90,9 +90,7 @@ jsonlines>=3.1.0,<4.0.0
 #      明示的に必要なもののみをインストールして競合を回避
 #
 # 4. 段階的インストール推奨:
-#    - transformer-lens と beartype の競合を避けるため段階的インストールが必要
-#    - Step 1: pip install -r requirements-colab.txt --no-deps
-#    - Step 2: pip install beartype>=0.14.0 --force-reinstall
+#    - launcher_colab.ipynb の段階的インストール機能使用を推奨
 #    - 問題が発生した場合の切り分けが容易
 #
 # 5. メモリ効率化:
