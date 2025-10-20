@@ -618,9 +618,9 @@ GEMMA2B_PROD_CONFIG = ExperimentConfig(
 # Gemma-2-9b test用設定
 GEMMA2_9B_TEST_CONFIG = ExperimentConfig(
     model=ModelConfig(
-        name="gemma-2-9b",
-        sae_release="gemma-scope-9b-pt-res-canonical",
-        sae_id="layer_30/width_16k/canonical", 
+        name="gemma-2-27b",
+        sae_release="gemma-scope-27b-pt-res-canonical",
+        sae_id="layer_34/width_131k/average_l0_785", 
         device="auto",
         use_accelerate=True,      # accelerateライブラリを有効
         use_fp16=True,           # float16でメモリ削減
