@@ -623,7 +623,7 @@ GEMMA2_9B_TEST_CONFIG = ExperimentConfig(
         sae_id="layer_34/width_131k/canonical", 
         device="auto",
         use_accelerate=True,      # accelerateライブラリを有効
-        use_fp16=True,           # float16でメモリ削減
+        use_fp16=False,           # float16でメモリ削減
         low_cpu_mem_usage=True,  # CPU使用量削減
         device_map="auto"        # 自動デバイス配置
     ),
