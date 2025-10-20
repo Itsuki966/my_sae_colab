@@ -68,6 +68,7 @@ from config import (
     LLAMA3_TEST_CONFIG, SERVER_LARGE_CONFIG,
     TEST_CONFIG, FEW_SHOT_TEST_CONFIG, get_auto_config, LLAMA3_MEMORY_OPTIMIZED_CONFIG,
     GEMMA2B_TEST_CONFIG, GEMMA2B_PROD_CONFIG, GEMMA2B_MEMORY_OPTIMIZED_CONFIG,
+    GEMMA2_27B_TEST_CONFIG,
     force_clear_gpu_cache, clear_gpu_memory
 )
 
@@ -449,12 +450,23 @@ class SycophancyAnalyzer:
         try:
             print("💎 Gemma-2B 専用読み込み開始...")
             
+            # torch_dtypeの設定を優先順位で決定
+            if self.config.model.use_bfloat16:
+                torch_dtype = torch.bfloat16
+                print("🔧 使用精度: bfloat16")
+            elif self.config.model.use_fp16:
+                torch_dtype = torch.float16
+                print("🔧 使用精度: float16")
+            else:
+                torch_dtype = torch.float32
+                print("🔧 使用精度: float32")
+            
             # HookedSAETransformer用のシンプルな読み込み
             self.model = HookedSAETransformer.from_pretrained(
                 self.config.model.name,
                 center_writing_weights=False,
                 trust_remote_code=True,
-                torch_dtype=torch.float16 if self.config.model.use_fp16 else torch.float32,
+                torch_dtype=torch_dtype,
                 device=self.config.model.device if self.config.model.device != "auto" else "cuda",
             )
             
@@ -492,7 +504,7 @@ class SycophancyAnalyzer:
             print(f"❌ Gemma-2B GPU読み込みエラー: {e}")
             print("🔄 CPUモードでのフォールバック試行中...")
             try:
-                # CPUでフォールバック
+                # CPUでフォールバック（CPUではfloat32を使用）
                 self.model = HookedSAETransformer.from_pretrained(
                     self.config.model.name,
                     center_writing_weights=False,
@@ -537,12 +549,23 @@ class SycophancyAnalyzer:
         try:
             print("🦙 Llama3 専用読み込み開始...")
             
+            # torch_dtypeの設定を優先順位で決定
+            if self.config.model.use_bfloat16:
+                torch_dtype = torch.bfloat16
+                print("🔧 使用精度: bfloat16")
+            elif self.config.model.use_fp16:
+                torch_dtype = torch.float16
+                print("🔧 使用精度: float16")
+            else:
+                torch_dtype = torch.float32
+                print("🔧 使用精度: float32")
+            
             # Llama3の読み込み処理（HookedSAETransformer用）
             self.model = HookedSAETransformer.from_pretrained(
                 self.config.model.name,
                 center_writing_weights=False,
                 trust_remote_code=True,
-                torch_dtype=torch.float16 if self.config.model.use_fp16 else torch.float32,
+                torch_dtype=torch_dtype,
                 device=self.config.model.device if self.config.model.device != "auto" else "cuda",
             )
             
@@ -1872,9 +1895,9 @@ def parse_arguments():
     
     parser.add_argument(
         '--mode', '-m',
-        choices=['test', 'production', 'llama3-test', 'llama3-prod', 'llama3-memory', 'gemma-2b-test', 'gemma-2b-prod', 'gemma-2b-memory', 'auto'],
+        choices=['test', 'production', 'llama3-test', 'llama3-prod', 'llama3-memory', 'gemma-2b-test', 'gemma-2b-prod', 'gemma-2b-memory', 'gemma-2-27b-test', 'auto'],
         default='auto',
-        help='実行モード: test(GPT-2テスト), production(GPT-2本番), llama3-test(Llama3テスト), llama3-prod(Llama3本番), llama3-memory(Llama3メモリ効率化), gemma-2b-test(Gemma-2Bテスト), gemma-2b-prod(Gemma-2B本番), gemma-2b-memory(Gemma-2Bメモリ最適化), auto(環境自動選択)'
+        help='実行モード: test(GPT-2テスト), production(GPT-2本番), llama3-test(Llama3テスト), llama3-prod(Llama3本番), llama3-memory(Llama3メモリ効率化), gemma-2b-test(Gemma-2Bテスト), gemma-2b-prod(Gemma-2B本番), gemma-2b-memory(Gemma-2Bメモリ最適化), gemma-2-27b-test(Gemma-2-27Bテスト), auto(環境自動選択)'
     )
     
     parser.add_argument(
@@ -1914,6 +1937,12 @@ def parse_arguments():
         '--use-fp16',
         action='store_true',
         help='float16精度を強制使用（メモリ効率化）'
+    )
+    
+    parser.add_argument(
+        '--use-bfloat16',
+        action='store_true',
+        help='bfloat16精度を強制使用（Gemma-2-27b等に推奨）'
     )
     
     parser.add_argument(
@@ -1961,6 +1990,9 @@ def get_config_from_mode(mode: str, args) -> ExperimentConfig:
     elif mode == 'gemma-2b-memory':
         config = GEMMA2B_MEMORY_OPTIMIZED_CONFIG
         print("🎯 Gemma-2B メモリ最適化モード（CUDA 9.1対応）")
+    elif mode == 'gemma-2-27b-test':
+        config = GEMMA2_27B_TEST_CONFIG
+        print("💎 Gemma-2-27B テストモード（bfloat16, サンプル数10）")
     elif mode == 'auto':
         config = get_auto_config()
         print("⚙️ 環境自動選択モード")
@@ -1982,6 +2014,11 @@ def get_config_from_mode(mode: str, args) -> ExperimentConfig:
     if args.use_fp16:
         config.model.use_fp16 = True
         print("🔧 float16精度を強制有効化")
+    
+    if args.use_bfloat16:
+        config.model.use_bfloat16 = True
+        config.model.use_fp16 = False  # bfloat16とfp16は排他的
+        print("🔧 bfloat16精度を強制有効化（Gemma-2-27b推奨）")
     
     if args.disable_accelerate:
         config.model.use_accelerate = False
