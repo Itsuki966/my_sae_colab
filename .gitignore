@@ -5,3 +5,4 @@ results/
 eval_dataset/
 launcher_colab.ipynb
 .DS_Store
+sycophancy_analysis_colab.ipynb
