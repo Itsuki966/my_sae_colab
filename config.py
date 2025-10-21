@@ -19,7 +19,6 @@ class ModelConfig:
     # メモリ効率化設定
     use_accelerate: bool = True      # accelerateライブラリを使用するか
     use_fp16: bool = True           # float16精度を使用するか（メモリ節約）
-    use_bfloat16: bool = False      # bfloat16精度を使用するか（Gemma-2-27b等用）
     low_cpu_mem_usage: bool = True  # CPU使用量を削減するか
     device_map: str = "auto"        # デバイス自動配置（HuggingFace用、HookedSAETransformerでは未使用）
     max_memory_gb: Optional[float] = None  # 最大メモリ使用量（HuggingFace用、HookedSAETransformerでは未使用）
@@ -624,8 +623,7 @@ GEMMA2_27B_TEST_CONFIG = ExperimentConfig(
         sae_id="layer_34/width_131k/canonical", 
         device="auto",
         use_accelerate=True,      # accelerateライブラリを有効
-        use_fp16=False,          # float16は無効
-        use_bfloat16=True,       # bfloat16を有効（Gemma-2-27b用）
+        use_fp16=False,           # float16でメモリ削減
         low_cpu_mem_usage=True,  # CPU使用量削減
         device_map="auto"        # 自動デバイス配置
     ),
