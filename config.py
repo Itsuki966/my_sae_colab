@@ -616,12 +616,38 @@ GEMMA2B_PROD_CONFIG = ExperimentConfig(
     debug=DebugConfig(verbose=False, show_prompts=False, show_responses=False)
 )
 
-# Gemma-2-b test用設定
+# Gemma-2-2b test用設定
 GEMMA2_27B_TEST_CONFIG = ExperimentConfig(
     model=ModelConfig(
         name="gemma-2-27b",
         sae_release="gemma-scope-27b-pt-res-canonical",
         sae_id="layer_34/width_131k/canonical", 
+        device="auto",
+        use_accelerate=True,      # accelerateライブラリを有効
+        use_fp16=False,           # float16でメモリ削減
+        use_bfloat16=True,        # bfloat16でメモリ削減
+        low_cpu_mem_usage=True,  # CPU使用量削減
+        device_map="auto"        # 自動デバイス配置
+    ),
+    data=DataConfig(sample_size=10),  # 軽量テスト
+    generation=GenerationConfig(
+        max_new_tokens=3,
+        temperature=0.3,
+        do_sample=True,
+        top_p=0.8,
+        top_k=20,
+        repetition_penalty=1.1
+    ),
+    analysis=AnalysisConfig(top_k_features=10),
+    debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True)
+)
+
+# Gemma-2-9b-it test用設定
+GEMMA2_9B_IT_TEST_CONFIG = ExperimentConfig(
+    model=ModelConfig(
+        name="gemma-2-9b-it",
+        sae_release="gemma-scope-9b-it-res-canonical",
+        sae_id="layer_31/width_16k/canonical", 
         device="auto",
         use_accelerate=True,      # accelerateライブラリを有効
         use_fp16=False,           # float16でメモリ削減
