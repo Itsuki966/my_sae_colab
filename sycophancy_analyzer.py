@@ -868,31 +868,57 @@ class SycophancyAnalyzer:
         Returns:
             (選択肢文字のリスト, 選択肢範囲文字列)
         """
-        # 括弧付きの選択肢パターンを検索 (A), (B), etc.
-        choice_pattern = re.compile(r'\(([A-Z])\)')
-        matches = choice_pattern.findall(answers)
-        
-        if matches:
-            choice_letters = sorted(set(matches))  # 重複除去とソート
-            
-            if len(choice_letters) <= 2:
-                choice_range = f"{choice_letters[0]} or {choice_letters[-1]}"
-            elif len(choice_letters) <= 5:
-                choice_range = ", ".join(choice_letters[:-1]) + f", or {choice_letters[-1]}"
-            else:
-                choice_range = f"{choice_letters[0]} through {choice_letters[-1]}"
-                
-            if self.config.debug.verbose:
-                print(f"📝 抽出された選択肢: {choice_letters}")
-                print(f"📝 選択肢範囲: {choice_range}")
-                
-            return choice_letters, choice_range
-        else:
-            # 選択肢パターンが見つからない場合は分析をスキップ
+        # よくある表記ゆれに対応：行頭の (A) / A) / A. / A: を検出し、順序を保持して重複除去
+        lines = [ln for ln in answers.splitlines() if ln.strip()]
+        ordered: List[str] = []
+        # 優先: 行頭の表記
+        head_patterns = [
+            re.compile(r"^\s*\(([A-J])\)[\s\-:\.]+"),   # (A) foo
+            re.compile(r"^\s*([A-J])\)[\s\-:\.]+"),      # A) foo
+            re.compile(r"^\s*([A-J])[\.:\-][\s]+"),       # A. foo / A: foo
+            re.compile(r"^\s*([A-J])\s+[-–—]\s+")          # A — foo
+        ]
+        for ln in lines:
+            for pat in head_patterns:
+                m = pat.search(ln)
+                if m:
+                    ch = m.group(1)
+                    if ch not in ordered:
+                        ordered.append(ch)
+                    break
+        # フォールバック: 本文中の (A) など
+        if not ordered:
+            inline_matches = re.findall(r"\(([A-J])\)", answers)
+            for ch in inline_matches:
+                if ch not in ordered:
+                    ordered.append(ch)
+        if not ordered:
             error_msg = f"選択肢パターンが見つかりません。入力: {answers[:100]}..."
             print(f"❌ エラー: {error_msg}")
             print("ℹ️ 分析をスキップします。選択肢の形式を確認してください。")
             raise ValueError(error_msg)
+
+        # choice_range の整形（順序保持）
+        choice_letters = ordered
+        # 連続判定（A,B,C,... か）
+        def is_consecutive(seq: List[str]) -> bool:
+            idx = [ord(c) for c in seq]
+            return all(idx[i] + 1 == idx[i+1] for i in range(len(idx)-1)) if len(idx) > 1 else True
+        if len(choice_letters) <= 2:
+            choice_range = f"{choice_letters[0]} or {choice_letters[-1]}" if len(choice_letters) == 2 else choice_letters[0]
+        elif len(choice_letters) <= 5:
+            choice_range = ", ".join(choice_letters[:-1]) + f", or {choice_letters[-1]}"
+        else:
+            if is_consecutive(choice_letters):
+                choice_range = f"{choice_letters[0]} through {choice_letters[-1]}"
+            else:
+                # 非連続のときは列挙
+                choice_range = ", ".join(choice_letters[:-1]) + f", or {choice_letters[-1]}"
+
+        if self.config.debug.verbose:
+            print(f"📝 抽出された選択肢（順序保持）: {choice_letters}")
+            print(f"📝 選択肢範囲: {choice_range}")
+        return choice_letters, choice_range
     
     def extract_answer_letter(self, response: str, valid_choices: List[str] = None) -> Optional[str]:
         """
@@ -922,68 +948,71 @@ class SycophancyAnalyzer:
             valid_choices = ['A', 'B', 'C', 'D', 'E']
             
         # 応答を大文字に変換して処理
-        response_upper = response.upper().strip()
+        response_upper = response.upper()
+        # 行単位に分割（空行除去）
+        lines = [ln.strip() for ln in response_upper.splitlines() if ln.strip()]
+
+        # ブラックリスト: 明らかにメタ情報・説明の行は候補から除外
+        blacklist_prefixes = [
+            "QUESTION:", "EXPLANATION", "CREATED ON", "SUBMIT", "DATE:", "HTTP", "HTTPS", "WWW.",
+            "NOTE:", "ANALYSIS:", "RATIONALE:", "MODEL:", "SYSTEM:", "USER:", "ASSISTANT:",
+            "YOUR ANSWER:", "OPTIONS:", "CHOICES:", "OPTION", "FINAL:", "CHALLENGE:", "INFO:",
+        ]
+
+        def is_blacklisted(ln: str) -> bool:
+            # HTMLやタグ風の開始も除外
+            if ln.startswith("<"):
+                return True
+            return any(ln.startswith(pfx) for pfx in blacklist_prefixes)
+
+        # 1) 最優先: 単独の一文字行（有効選択肢）を末尾から探索
+        for ln in reversed(lines):
+            if is_blacklisted(ln):
+                continue
+            if re.fullmatch(r"[A-J]", ln):
+                if ln in valid_choices:
+                    if self.config.debug.verbose:
+                        print(f"📝 単独行マッチで抽出: {ln}")
+                    return ln
+                # 一文字だが選択肢外は無視
+
+        # 2) "Final answer: X" / "Answer: X" 形式
+        for pat in [r"FINAL\s+ANSWER\s*:\s*([A-J])", r"ANSWER\s*:\s*([A-J])"]:
+            m = re.search(pat, response_upper)
+            if m:
+                ch = m.group(1)
+                if ch in valid_choices:
+                    if self.config.debug.verbose:
+                        print(f"📝 ラベル付きパターンで抽出: {ch}")
+                    return ch
+
+        # 3) 括弧付き (A) を末尾優先で探索
+        paren_matches = re.findall(r"\(([A-J])\)", response_upper)
+        if paren_matches:
+            for ch in reversed(paren_matches):
+                if ch in valid_choices:
+                    if self.config.debug.verbose:
+                        print(f"📝 括弧パターンで抽出: {ch}")
+                    return ch
+
+        # 4) 文中の独立トークンとして現れる選択肢（末尾優先）
+        token_letters = []
+        for ch in valid_choices:
+            # 単語境界で探す
+            for m in re.finditer(rf"\b{ch}\b", response_upper):
+                token_letters.append((m.start(), ch))
+        if token_letters:
+            pos, ch = max(token_letters, key=lambda t: t[0])  # 最後に現れたもの
+            if self.config.debug.verbose:
+                print(f"📝 単語境界パターンで抽出: {ch}")
+            return ch
         
-        # パターン1: "Final answer: X" 形式の構造化された応答
-        final_answer_match = re.search(r'FINAL\s+ANSWER\s*:\s*([A-J])', response_upper)
-        if final_answer_match:
-            found = final_answer_match.group(1)
-            if found in valid_choices:
+        # 5) 文字列の最初/最後が選択肢
+        for ch in valid_choices:
+            if response_upper.strip().startswith(ch) or response_upper.strip().endswith(ch):
                 if self.config.debug.verbose:
-                    print(f"📝 Final answer パターンで抽出: {found}")
-                return found
-        
-        # パターン2: "Answer: X" 形式（簡潔な応答）
-        answer_match = re.search(r'ANSWER\s*:\s*([A-J])', response_upper)
-        if answer_match:
-            found = answer_match.group(1)
-            if found in valid_choices:
-                if self.config.debug.verbose:
-                    print(f"📝 Answer パターンで抽出: {found}")
-                return found
-        
-        # パターン3: 応答の最後に現れる有効な選択肢（最も信頼性が高い）
-        # 応答の末尾から逆順に検索
-        for choice in valid_choices:
-            pattern = rf'\b{choice}\b'
-            matches = list(re.finditer(pattern, response_upper))
-            if matches:
-                # 最後のマッチを使用
-                if self.config.debug.verbose:
-                    print(f"📝 末尾パターンで抽出: {choice}")
-                return choice
-        
-        # パターン4: 括弧付きの選択肢 (A), (B), etc.
-        paren_match = re.search(r'\(([A-J])\)', response_upper)
-        if paren_match:
-            found = paren_match.group(1)
-            if found in valid_choices:
-                if self.config.debug.verbose:
-                    print(f"📝 括弧パターンで抽出: {found}")
-                return found
-        
-        # パターン5: 単独の選択肢文字（最初に見つかったもの）
-        for choice in valid_choices:
-            # 単語境界での検索（より厳密）
-            pattern = rf'\b{choice}\b'
-            if re.search(pattern, response_upper):
-                if self.config.debug.verbose:
-                    print(f"📝 単語境界パターンで抽出: {choice}")
-                return choice
-        
-        # パターン6: 文字列の最初または最後の有効な選択肢
-        for choice in valid_choices:
-            if response_upper.startswith(choice) or response_upper.endswith(choice):
-                if self.config.debug.verbose:
-                    print(f"📝 開始/終了パターンで抽出: {choice}")
-                return choice
-        
-        # パターン7: 文字列内のどこかにある有効な選択肢（最後の手段）
-        for choice in valid_choices:
-            if choice in response_upper:
-                if self.config.debug.verbose:
-                    print(f"📝 包含パターンで抽出（注意）: {choice}")
-                return choice
+                    print(f"📝 開始/終了パターンで抽出: {ch}")
+                return ch
         
         if self.config.debug.verbose:
             print(f"⚠️ 有効な選択肢が見つかりません。応答: '{response[:50]}...'")
