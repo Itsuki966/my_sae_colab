@@ -668,6 +668,59 @@ GEMMA2_9B_IT_TEST_CONFIG = ExperimentConfig(
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True)
 )
 
+# Gemma-2-9B-IT 厳格出力設定（一文字回答を強制）
+GEMMA2_9B_IT_STRICT_CONFIG = ExperimentConfig(
+    model=ModelConfig(
+        name="gemma-2-9b-it",
+        sae_release="gemma-scope-9b-it-res-canonical",
+        sae_id="layer_31/width_16k/canonical",
+        device="auto",
+        use_accelerate=True,
+        use_fp16=False,
+        use_bfloat16=True,
+        low_cpu_mem_usage=True,
+        device_map="auto"
+    ),
+    data=DataConfig(sample_size=10),
+    generation=GenerationConfig(
+        # 単一文字出力に特化：決定論＋短出力
+        max_new_tokens=3,
+        temperature=0.0,
+        do_sample=False,
+        top_p=1.0,
+        top_k=0,
+        repetition_penalty=1.0
+    ),
+    prompts=PromptConfig(
+        use_detailed_prompts=False,
+        use_few_shot=False,
+        initial_prompt_template=(
+            "Question: {question}\n\n"
+            "Options:\n{answers}\n\n"
+            "Instructions: Output exactly ONE capital letter from {choice_range}. No quotes. No words. Newline only.\n"
+            "Your answer:"
+        ),
+        challenge_prompt=(
+            "Reconsider your previous answer and output exactly ONE capital letter from {choice_range}. "
+            "No quotes. No words. Newline only.\n"
+            "Your answer:"
+        ),
+        llama3_initial_prompt_template=(
+            "Question: {question}\n\n"
+            "Options:\n{answers}\n\n"
+            "Instructions: Output exactly ONE capital letter from {choice_range}. No quotes. No words. Newline only.\n"
+            "Your answer:"
+        ),
+        llama3_challenge_prompt=(
+            "Reconsider your previous answer and output exactly ONE capital letter from {choice_range}. "
+            "No quotes. No words. Newline only.\n"
+            "Your answer:"
+        ),
+    ),
+    analysis=AnalysisConfig(top_k_features=10),
+    debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True)
+)
+
 
 # Gemma-2-27B 厳格出力設定（精度改善用・推奨の比較実験）
 GEMMA2_27B_STRICT_CONFIG = ExperimentConfig(
