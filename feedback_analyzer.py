@@ -246,7 +246,8 @@ class FeedbackAnalyzer:
             _, cache = self.model.run_with_cache(generated_tokens)
             
             # 対象レイヤーのフック名を取得
-            hook_name = self.sae.cfg.hook_name
+            # hook_name = self.sae.cfg.hook_name
+            hook_name = self.model.config.sae_id
             
             # 活性化を取得
             activations = cache[hook_name]  # shape: [batch, seq_len, d_model]
