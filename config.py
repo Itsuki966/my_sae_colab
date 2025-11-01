@@ -415,7 +415,7 @@ MAC_CONFIG = ExperimentConfig(
         device_map="auto"        # 自動デバイス配置
     ),
     data=DataConfig(sample_size=20),
-    generation=GenerationConfig(max_new_tokens=3, temperature=0.3, do_sample=True, top_p=0.8, top_k=20, repetition_penalty=1.1),
+    generation=GenerationConfig(max_new_tokens=3, temperature=0.3, do_sample=True, top_p=0.8, top_k=20),  # repetition_penalty=1.1
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True)
 )
 
@@ -431,7 +431,7 @@ LIGHTWEIGHT_CONFIG = ExperimentConfig(
         device_map="auto"        # 自動デバイス配置
     ),
     data=DataConfig(sample_size=20),
-    generation=GenerationConfig(max_new_tokens=3, temperature=0.3, do_sample=True, top_p=0.8, top_k=20, repetition_penalty=1.1),
+    generation=GenerationConfig(max_new_tokens=3, temperature=0.3, do_sample=True, top_p=0.8, top_k=20),  # repetition_penalty=1.1
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True)
 )
 
@@ -453,7 +453,7 @@ TEST_CONFIG = ExperimentConfig(
         do_sample=True,
         top_p=0.8,
         top_k=20,
-        repetition_penalty=1.1
+        # repetition_penalty=1.1
     ),
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True, show_activations=True)
 )
@@ -482,7 +482,7 @@ FEW_SHOT_TEST_CONFIG = ExperimentConfig(
         do_sample=True,
         top_p=0.8,
         top_k=20,
-        repetition_penalty=1.1
+        # repetition_penalty=1.1
     ),
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True)
 )
@@ -502,7 +502,7 @@ LLAMA3_TEST_CONFIG = ExperimentConfig(
         do_sample=False,             # グリーディデコーディング
         top_p=0.9,
         top_k=50,
-        repetition_penalty=1.1
+        # repetition_penalty=1.1
     ),
     analysis=AnalysisConfig(top_k_features=10),  # テスト用に少なくする
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True, show_activations=True)
@@ -530,7 +530,7 @@ LLAMA3_MEMORY_OPTIMIZED_CONFIG = ExperimentConfig(
         do_sample=True,
         top_p=0.8,
         top_k=20,
-        repetition_penalty=1.1
+        # repetition_penalty=1.1
     ),
     analysis=AnalysisConfig(top_k_features=20),
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=False)  # 応答表示は無効
@@ -558,7 +558,7 @@ GEMMA2B_CPU_CONFIG = ExperimentConfig(
         do_sample=True,
         top_p=0.8,
         top_k=20,
-        repetition_penalty=1.1
+        # repetition_penalty=1.1
     ),
     analysis=AnalysisConfig(top_k_features=10),
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True, show_activations=False)
@@ -584,7 +584,7 @@ GEMMA2B_TEST_CONFIG = ExperimentConfig(
         do_sample=False,             # 決定的生成でメモリ節約
         top_p=0.9,
         top_k=50,                    # top_kを50に増加
-        repetition_penalty=1.1
+        # repetition_penalty=1.1
     ),
     analysis=AnalysisConfig(top_k_features=5),
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True, show_activations=False)
@@ -620,7 +620,7 @@ GEMMA2B_PROD_CONFIG = ExperimentConfig(
         do_sample=True,
         top_p=0.8,
         top_k=20,
-        repetition_penalty=1.1
+        # repetition_penalty=1.1
     ),
     analysis=AnalysisConfig(top_k_features=100),
     debug=DebugConfig(verbose=False, show_prompts=False, show_responses=False)
@@ -646,7 +646,7 @@ GEMMA2_27B_TEST_CONFIG = ExperimentConfig(
         do_sample=True,
         top_p=0.8,
         top_k=20,
-        repetition_penalty=1.1
+        # repetition_penalty=1.1
     ),
     analysis=AnalysisConfig(top_k_features=10),
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True)
@@ -672,7 +672,7 @@ GEMMA2_9B_IT_TEST_CONFIG = ExperimentConfig(
         do_sample=False, # 確率が最も高いトークンを選択するように変更
         top_p=0.8,
         top_k=20,
-        repetition_penalty=1.1
+        # repetition_penalty=1.1
     ),
     analysis=AnalysisConfig(top_k_features=10),
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True)
@@ -698,8 +698,8 @@ GEMMA2_9B_IT_STRICT_CONFIG = ExperimentConfig(
         temperature=0.0,
         do_sample=False,
         top_p=1.0,
-        top_k=0,
-        repetition_penalty=1.0
+    top_k=0,
+    # repetition_penalty=1.0
     ),
     prompts=PromptConfig(
         use_detailed_prompts=False,
@@ -752,8 +752,8 @@ GEMMA2_27B_STRICT_CONFIG = ExperimentConfig(
         temperature=0.0,
         do_sample=False,
         top_p=1.0,
-        top_k=0,
-        repetition_penalty=1.0
+    top_k=0,
+    # repetition_penalty=1.0
     ),
     # 厳格なプロンプトで「1文字のみ」出力を強制
     prompts=PromptConfig(
@@ -806,8 +806,8 @@ GEMMA2_27B_IT_TEST_CONFIG = ExperimentConfig(
         temperature=0.0,
         do_sample=False,
         top_p=1.0,
-        top_k=0,
-        repetition_penalty=1.0
+    top_k=0,
+    # repetition_penalty=1.0
     ),
     prompts=PromptConfig(
         use_detailed_prompts=False,
@@ -920,7 +920,7 @@ SERVER_MEDIUM_CONFIG = ExperimentConfig(
         device_map="auto"        # 自動デバイス配置
     ),
     data=DataConfig(sample_size=200),
-    generation=GenerationConfig(max_new_tokens=3, temperature=0.3, do_sample=True, top_p=0.8, top_k=20, repetition_penalty=1.1),
+    generation=GenerationConfig(max_new_tokens=3, temperature=0.3, do_sample=True, top_p=0.8, top_k=20),  # repetition_penalty=1.1
     debug=DebugConfig(verbose=False, show_prompts=False, show_responses=False)
 )
 
@@ -945,7 +945,7 @@ SERVER_LARGE_CONFIG = ExperimentConfig(
         do_sample=True,
         top_p=0.8,
         top_k=20,
-        repetition_penalty=1.1
+        # repetition_penalty=1.1
     ),
     analysis=AnalysisConfig(top_k_features=100),
     debug=DebugConfig(verbose=False, show_prompts=False, show_responses=False)
@@ -961,7 +961,7 @@ COMPREHENSIVE_CONFIG = ExperimentConfig(
     ),
     data=DataConfig(sample_size=100),
     analysis=AnalysisConfig(top_k_features=50),
-    generation=GenerationConfig(max_new_tokens=3, temperature=0.3, do_sample=True, top_p=0.8, top_k=20, repetition_penalty=1.1)
+    generation=GenerationConfig(max_new_tokens=3, temperature=0.3, do_sample=True, top_p=0.8, top_k=20)  # repetition_penalty=1.1
 )
 
 # Gemma-2Bメモリ最適化設定（CUDA 9.1環境対応）
@@ -993,7 +993,7 @@ GEMMA2B_MEMORY_OPTIMIZED_CONFIG = ExperimentConfig(
         do_sample=True,
         top_p=0.8,
         top_k=20,
-        repetition_penalty=1.1
+        # repetition_penalty=1.1
     ),
     analysis=AnalysisConfig(top_k_features=20),
     debug=DebugConfig(verbose=True, show_prompts=False, show_responses=False)
@@ -1051,7 +1051,7 @@ GEMMA2B_CPU_SAFE_CONFIG = ExperimentConfig(
         do_sample=True,
         top_p=0.8,
         top_k=20,
-        repetition_penalty=1.1
+        # repetition_penalty=1.1
     ),
     analysis=AnalysisConfig(top_k_features=5),  # 最小限
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True, show_activations=False)
@@ -1071,7 +1071,7 @@ EMERGENCY_CPU_CONFIG = ExperimentConfig(
         offload_to_disk=True
     ),
     data=DataConfig(sample_size=3),
-    generation=GenerationConfig(max_new_tokens=3, temperature=0.3, do_sample=True, top_p=0.8, top_k=20, repetition_penalty=1.1),
+    generation=GenerationConfig(max_new_tokens=3, temperature=0.3, do_sample=True, top_p=0.8, top_k=20),  # repetition_penalty=1.1
     analysis=AnalysisConfig(top_k_features=5),
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True)
 )
