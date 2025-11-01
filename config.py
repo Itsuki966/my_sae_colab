@@ -869,7 +869,7 @@ FEEDBACK_GEMMA27B_CONFIG = ExperimentConfig(
         do_sample=True,
         top_p=0.9,
         top_k=50,
-        repetition_penalty=1.1
+        # repetition_penalty=1.1
     ),
     prompts=PromptConfig(
         use_detailed_prompts=False,
