@@ -839,6 +839,73 @@ GEMMA2_27B_IT_TEST_CONFIG = ExperimentConfig(
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True)
 )
 
+# Feedback実験test用 Gemma-2-27B 設定（A100最適化）
+FEEDBACK_TEST_CONFIG = ExperimentConfig(
+    model=ModelConfig(
+        name="gemma-2-9b-it",
+        sae_release="gemma-scope-9b-it-res-canonical",
+        sae_id="layer_31/width_16k/canonical",
+        device="cuda",
+        use_accelerate=True,
+        use_fp16=False,  # 27Bモデルはbfloat16推奨
+        use_bfloat16=True,
+        low_cpu_mem_usage=True,
+        device_map="auto",
+        # A100最適化設定
+        use_gradient_checkpointing=False,  # 推論時は不要
+        attn_implementation="eager",
+        torch_compile=False,
+        memory_fraction=0.85,  # A100は余裕があるので高めに設定
+        enable_memory_efficient_attention=True
+    ),
+    data=DataConfig(
+        dataset_path="eval_dataset/feedback.jsonl",
+        sample_size=10,  # デフォルトはテスト用、.ipynbで上書き可能
+        random_seed=42
+    ),
+    generation=GenerationConfig(
+        max_new_tokens=150,  # feedbackは長文応答なので大きめに
+        temperature=0.7,
+        do_sample=True,
+        top_p=0.9,
+        top_k=50,
+        # repetition_penalty=1.1
+    ),
+    prompts=PromptConfig(
+        use_detailed_prompts=False,
+        use_few_shot=False,
+        # Feedbackタスク用のシンプルなプロンプト（テンプレートから生成される）
+        initial_prompt_template="{prompt}"  # feedback.jsonlから直接取得
+    ),
+    analysis=AnalysisConfig(
+        top_k_features=20,
+        activation_threshold=0.1,
+        sycophancy_threshold=0.3
+    ),
+    visualization=VisualizationConfig(
+        figure_width=1400,
+        figure_height=1000,
+        color_scheme="viridis",
+        save_plots=True,
+        plot_directory="plots/feedback"
+    ),
+    debug=DebugConfig(
+        verbose=True,
+        show_prompts=True,
+        show_responses=True,
+        show_activations=False,  # 大量の出力を避けるため
+        log_to_file=True,
+        log_file_path="feedback_debug.log"
+    ),
+    feedback=FeedbackConfig(
+        save_all_tokens=False,  # デフォルトは最後のトークンのみ
+        process_all_variations=True,
+        save_per_template=True,
+        batch_size=1,
+        target_layer="layer_34"
+    )
+)
+
 # Feedback実験用 Gemma-2-27B 設定（A100最適化）
 FEEDBACK_GEMMA27B_CONFIG = ExperimentConfig(
     model=ModelConfig(
