@@ -7,6 +7,8 @@ Feedback実験用SAE分析器
 
 import json
 import os
+import gc
+import warnings
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, asdict
@@ -14,6 +16,11 @@ import torch
 import numpy as np
 from datetime import datetime
 from tqdm import tqdm
+
+# メモリ効率化のための環境変数設定
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
+os.environ['TOKENIZERS_PARALLELISM'] = 'false'
+warnings.filterwarnings('ignore')
 
 # SAE Lens imports
 from transformer_lens import HookedTransformer
@@ -80,6 +87,62 @@ class FeedbackAnalyzer:
             print(f"   📁 Results directory: {self.results_dir}")
             print(f"   💾 Save all tokens: {self.feedback_config.save_all_tokens}")
             print(f"   🎯 Target layer: {self.feedback_config.target_layer}")
+            
+    def get_model_device(self) -> str:
+        """モデルの現在のデバイスを安全に取得"""
+        if self.model is None:
+            return self.device
+        try:
+            first_param = next(self.model.parameters())
+            return str(first_param.device)
+        except (StopIteration, AttributeError):
+            return self.device
+
+    def get_current_sae_device(self) -> str:
+        """SAEの現在のデバイスを取得"""
+        if self.sae is None:
+            return self.device
+        try:
+            first_param = next(self.sae.parameters())
+            return str(first_param.device)
+        except (StopIteration, AttributeError):
+            return self.sae_device if self.sae_device else self.device
+
+    def ensure_device_consistency(self, tensor: torch.Tensor) -> torch.Tensor:
+        """テンソルをSAEと同じデバイスに移動"""
+        if self.sae is None:
+            return tensor
+        sae_device = self.get_current_sae_device()
+        if str(tensor.device) != sae_device:
+            tensor = tensor.to(sae_device)
+        return tensor
+
+    def optimize_memory_usage(self):
+        """メモリ使用量を最適化"""
+        try:
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                if self.config.debug.verbose:
+                    memory_allocated = torch.cuda.memory_allocated() / 1e9
+                    memory_reserved = torch.cuda.memory_reserved() / 1e9
+                    print(f"💾 GPU Memory: {memory_allocated:.2f}GB allocated, {memory_reserved:.2f}GB reserved")
+            gc.collect()
+        except Exception as e:
+            if self.config.debug.verbose:
+                print(f"⚠️ メモリ最適化中に警告: {e}")
+
+    def force_clear_gpu_cache(self):
+        """GPUキャッシュを強制的にクリア"""
+        try:
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+            gc.collect()
+            if self.config.debug.verbose:
+                print("🧹 GPU cache cleared")
+        except Exception as e:
+            if self.config.debug.verbose:
+                print(f"⚠️ GPU cache clear warning: {e}")    
     
     def load_feedback_data(self, data_path: Optional[str] = None) -> List[Dict]:
         """
@@ -206,8 +269,16 @@ class FeedbackAnalyzer:
             device=device
         )
         
+        # SAEのデバイスを記録
+        self.sae_device = str(device)
+        
+        # トークナイザーを取得
+        self.tokenizer = self.model.tokenizer
+        
         if self.config.debug.verbose:
             print("✅ Model and SAE loaded successfully")
+            print(f"   🎯 Model device: {self.get_model_device()}")
+            print(f"   🎯 SAE device: {self.get_current_sae_device()}")
             if torch.cuda.is_available():
                 memory_allocated = torch.cuda.memory_allocated() / 1e9
                 print(f"   💾 GPU Memory: {memory_allocated:.2f} GB")
@@ -246,8 +317,9 @@ class FeedbackAnalyzer:
             _, cache = self.model.run_with_cache(generated_tokens)
             
             # 対象レイヤーのフック名を取得
-            # hook_name = self.sae.cfg.hook_name
-            hook_name = self.model.config.sae_id
+            # HookedTransformerには.configではなく.cfgを使用
+            # hook_name = self.sae.cfg.hook_name if hasattr(self.sae, 'cfg') else self.config.model.sae_id
+            hook_name = self.config.model.sae_id
             
             # 活性化を取得
             activations = cache[hook_name]  # shape: [batch, seq_len, d_model]
@@ -422,8 +494,10 @@ class FeedbackAnalyzer:
             result = self.analyze_question_group(question_id, prompt_group)
             self.results.append(result)
             
-            # メモリクリア
-            if torch.cuda.is_available():
+            # メモリ最適化を実行
+            if hasattr(self, 'optimize_memory_usage'):
+                self.optimize_memory_usage()
+            elif torch.cuda.is_available():
                 torch.cuda.empty_cache()
         
         if self.config.debug.verbose:
