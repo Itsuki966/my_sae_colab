@@ -295,6 +295,7 @@ class FeedbackAnalyzer:
         """
         # トークン化
         tokens = self.model.to_tokens(prompt)
+        original_length = tokens.shape[1]  # 元のプロンプトのトークン数を記録
         
         # キャッシュ付きで生成実行
         with torch.no_grad():
@@ -310,8 +311,9 @@ class FeedbackAnalyzer:
                 stop_at_eos=True
             )
             
-            # 生成テキストをデコード
-            response_text = self.model.to_string(generated_tokens[0])
+            # 新規生成された部分のみを取り出してデコード
+            new_tokens = generated_tokens[0, original_length:]  # プロンプト部分を除外
+            response_text = self.model.to_string(new_tokens)
             
             # SAE活性化を取得するため、再度フォワードパス実行
             _, cache = self.model.run_with_cache(generated_tokens)
