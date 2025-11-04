@@ -14,6 +14,7 @@ class ModelConfig:
     name: str = "gpt2"  # 使用するLLMモデル（SAEと一致させる）
     sae_release: str = "gpt2-small-res-jb"   # SAEリリース
     sae_id: str = "blocks.5.hook_resid_pre"  # SAE ID（block 5を使用）
+    hook_name: str = "blocks.5.hook_resid_pre"  # HookedTransformer用のフック名
     device: str = "auto"  # デバイス設定 ("auto", "cpu", "cuda", "mps")
     
     # メモリ効率化設定
