@@ -912,6 +912,7 @@ FEEDBACK_GEMMA27B_CONFIG = ExperimentConfig(
         name="gemma-2-27b",
         sae_release="gemma-scope-27b-pt-res-canonical",
         sae_id="layer_34/width_131k/canonical", 
+        hook_name = "blocks.34.hook_resid_post",
         device="cuda",
         use_accelerate=True,
         use_fp16=False,  # 27Bモデルはbfloat16推奨

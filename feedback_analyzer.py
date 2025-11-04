@@ -319,7 +319,7 @@ class FeedbackAnalyzer:
             # 対象レイヤーのフック名を取得
             # HookedTransformerには.configではなく.cfgを使用
             # hook_name = self.sae.cfg.hook_name if hasattr(self.sae, 'cfg') else self.config.model.sae_id
-            hook_name = self.config.model.sae_id
+            hook_name = self.config.model.hook_name
             
             # 活性化を取得
             activations = cache[hook_name]  # shape: [batch, seq_len, d_model]
