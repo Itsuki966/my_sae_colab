@@ -253,7 +253,7 @@ class FeedbackAnalyzer:
         
         dtype = torch.bfloat16 if getattr(self.config.model, 'use_bfloat16', False) else torch.float16
         
-        self.model = HookedTransformer.from_pretrained(
+        self.model = HookedTransformer.from_pretrained_no_processing(
             self.config.model.name,
             device=device,
             dtype=dtype
