@@ -770,8 +770,8 @@ GEMMA2_27B_STRICT_CONFIG = ExperimentConfig(
     debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True)
 )
 
-# Feedback実験test用 Gemma-2-27B 設定（A100最適化）
-FEEDBACK_TEST_CONFIG = ExperimentConfig(
+# Feedback実験 Gemma-2-9b-it（A100最適化）
+FEEDBACK_GEMMA2_98_IT_CONFIG = ExperimentConfig(
     model=ModelConfig(
         name="gemma-2-9b-it",
         sae_release="gemma-scope-9b-it-res-canonical",
@@ -837,6 +837,8 @@ FEEDBACK_TEST_CONFIG = ExperimentConfig(
         target_layer="layer_34"
     )
 )
+
+
 
 # Feedback実験用 Gemma-2-27B 設定（A100最適化）
 FEEDBACK_GEMMA27B_CONFIG = ExperimentConfig(
