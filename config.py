@@ -403,23 +403,6 @@ class ExperimentConfig:
 # デフォルト設定のインスタンス
 DEFAULT_CONFIG = ExperimentConfig()
 
-# Mac環境用軽量設定（メモリ節約強化）
-MAC_CONFIG = ExperimentConfig(
-    model=ModelConfig(
-        name="gpt2",
-        sae_release="gpt2-small-res-jb", 
-        sae_id="blocks.5.hook_resid_pre",
-        device="auto",  # 自動でmps/cpuを選択
-        use_accelerate=True,      # accelerateライブラリを有効
-        use_fp16=True,           # float16でメモリ削減
-        low_cpu_mem_usage=True,  # CPU使用量削減
-        device_map="auto"        # 自動デバイス配置
-    ),
-    data=DataConfig(sample_size=20),
-    generation=GenerationConfig(max_new_tokens=3, temperature=0.3, do_sample=True, top_p=0.8, top_k=20),  # repetition_penalty=1.1
-    debug=DebugConfig(verbose=True, show_prompts=True, show_responses=True)
-)
-
 # よく使用される軽量設定（メモリ節約強化）
 LIGHTWEIGHT_CONFIG = ExperimentConfig(
     model=ModelConfig(
