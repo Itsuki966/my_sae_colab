@@ -771,7 +771,7 @@ GEMMA2_27B_STRICT_CONFIG = ExperimentConfig(
 )
 
 # Feedback実験 Gemma-2-9b-it（A100最適化）
-FEEDBACK_GEMMA2_98_IT_CONFIG = ExperimentConfig(
+FEEDBACK_GEMMA2_9B_IT_CONFIG = ExperimentConfig(
     model=ModelConfig(
         name="gemma-2-9b-it",
         sae_release="gemma-scope-9b-it-res-canonical",
