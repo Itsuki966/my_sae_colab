@@ -776,6 +776,7 @@ FEEDBACK_TEST_CONFIG = ExperimentConfig(
         name="gemma-2-9b-it",
         sae_release="gemma-scope-9b-it-res-canonical",
         sae_id="layer_31/width_16k/canonical",
+        hook_name = "blocks.31.hook_resid_post",
         device="cuda",
         use_accelerate=True,
         use_fp16=False,  # 27Bモデルはbfloat16推奨
