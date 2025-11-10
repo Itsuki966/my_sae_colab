@@ -466,12 +466,18 @@ class FeedbackAnalyzer:
             timestamp=datetime.now().isoformat()
         )
     
-    def run_analysis(self, sample_size: Optional[int] = None):
+    def run_analysis(self, sample_size: Optional[int] = None, start_index: Optional[int] = None, end_index: Optional[int] = None):
         """
         完全な分析を実行
         
         Args:
             sample_size: 分析するサンプル数（Noneの場合はconfigから取得）
+            start_index: 開始インデックス（0-based、Noneの場合は0から開始）
+            end_index: 終了インデックス（0-based、Noneの場合は最後まで）
+        
+        Note:
+            - sample_sizeとstart_index/end_indexを同時に指定した場合、start_index/end_indexが優先されます
+            - 例: start_index=100, end_index=500 で101個目から500個目を取得（0-indexedのため）
         """
         if self.config.debug.verbose:
             print("\n" + "="*60)
@@ -484,14 +490,25 @@ class FeedbackAnalyzer:
         # プロンプトグループ化
         prompt_groups = self.aggregate_prompts(feedback_data)
         
-        # サンプルサイズ調整
-        if sample_size is None:
-            sample_size = self.config.data.sample_size
+        total_questions = len(prompt_groups)
         
-        if sample_size is not None and sample_size < len(prompt_groups):
-            prompt_groups = prompt_groups[:sample_size]
+        # データ範囲の調整
+        if start_index is not None or end_index is not None:
+            # start_index/end_indexが指定されている場合
+            start = start_index if start_index is not None else 0
+            end = end_index if end_index is not None else total_questions
+            prompt_groups = prompt_groups[start:end]
             if self.config.debug.verbose:
-                print(f"📊 Analyzing {sample_size} questions (out of {len(prompt_groups)} total)")
+                print(f"📊 Analyzing questions {start+1} to {end} (total: {len(prompt_groups)} questions)")
+        else:
+            # sample_sizeによる調整（従来の動作）
+            if sample_size is None:
+                sample_size = self.config.data.sample_size
+            
+            if sample_size is not None and sample_size < len(prompt_groups):
+                prompt_groups = prompt_groups[:sample_size]
+                if self.config.debug.verbose:
+                    print(f"📊 Analyzing {sample_size} questions (out of {total_questions} total)")
         
         # モデルとSAEのロード
         if self.model is None or self.sae is None:
@@ -583,14 +600,16 @@ class FeedbackAnalyzer:
             file_size = os.path.getsize(output_path) / 1024 / 1024
             print(f"   📦 File size: {file_size:.2f} MB")
     
-    def run_complete_analysis(self, sample_size: Optional[int] = None):
+    def run_complete_analysis(self, sample_size: Optional[int] = None, start_index: Optional[int] = None, end_index: Optional[int] = None):
         """
         分析の実行と結果保存を一括で行う
         
         Args:
             sample_size: 分析するサンプル数
+            start_index: 開始インデックス（0-based）
+            end_index: 終了インデックス（0-based）
         """
-        self.run_analysis(sample_size=sample_size)
+        self.run_analysis(sample_size=sample_size, start_index=start_index, end_index=end_index)
         self.save_results()
         
         if self.config.debug.verbose:
