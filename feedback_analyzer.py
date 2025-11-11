@@ -524,7 +524,9 @@ class FeedbackAnalyzer:
         # プログレスバーに全体の問題数に対する進行状況を表示
         progress_desc = f"Processing questions ({start+1}-{end}/{total_questions})"
         for idx, prompt_group in enumerate(tqdm(prompt_groups_to_process, desc=progress_desc)):
-            result = self.analyze_question_group(question_id, prompt_group)
+            # 実際の質問IDは開始位置を考慮
+            actual_question_id = start + idx
+            result = self.analyze_question_group(actual_question_id, prompt_group)
             self.results.append(result)
             
             # メモリ最適化を実行
