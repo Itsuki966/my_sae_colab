@@ -493,29 +493,37 @@ class FeedbackAnalyzer:
         total_questions = len(prompt_groups)
         
         # データ範囲の調整
+        start = 0
+        end = total_questions
+        
         if start_index is not None or end_index is not None:
             # start_index/end_indexが指定されている場合
             start = start_index if start_index is not None else 0
             end = end_index if end_index is not None else total_questions
-            prompt_groups = prompt_groups[start:end]
+            prompt_groups_to_process = prompt_groups[start:end]
             if self.config.debug.verbose:
-                print(f"📊 Analyzing questions {start+1} to {end} (total: {len(prompt_groups)} questions)")
+                print(f"📊 Analyzing questions {start+1} to {end} (total: {len(prompt_groups_to_process)} questions out of {total_questions})")
         else:
             # sample_sizeによる調整（従来の動作）
             if sample_size is None:
                 sample_size = self.config.data.sample_size
             
             if sample_size is not None and sample_size < len(prompt_groups):
-                prompt_groups = prompt_groups[:sample_size]
+                prompt_groups_to_process = prompt_groups[:sample_size]
+                end = sample_size
                 if self.config.debug.verbose:
                     print(f"📊 Analyzing {sample_size} questions (out of {total_questions} total)")
+            else:
+                prompt_groups_to_process = prompt_groups
         
         # モデルとSAEのロード
         if self.model is None or self.sae is None:
             self.load_model_and_sae()
         
         # 各質問グループを分析
-        for question_id, prompt_group in enumerate(tqdm(prompt_groups, desc="Analyzing questions")):
+        # プログレスバーに全体の問題数に対する進行状況を表示
+        progress_desc = f"Processing questions ({start+1}-{end}/{total_questions})"
+        for idx, prompt_group in enumerate(tqdm(prompt_groups_to_process, desc=progress_desc)):
             result = self.analyze_question_group(question_id, prompt_group)
             self.results.append(result)
             
