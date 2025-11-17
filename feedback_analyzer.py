@@ -291,6 +291,20 @@ class FeedbackAnalyzer:
         重要: プロンプトの最後のトークンの内部状態（応答の最初のトークン生成直前）を取得します。
         これは迎合性分析において、モデルの応答方針が最も明確に表現される状態です。
         
+        データ保存方針（ステップ3のML学習用）:
+        - SAEの活性化値が0より大きい全ての特徴を保存（疎ベクトル形式）
+        - 閾値による事前フィルタリングは行わない（XGBoostの特徴選択に委ねる）
+        - これにより、SHAP分析で全特徴の寄与度を正確に評価可能
+        
+        保存形式例:
+        {
+            "prompt_last_token": {
+                "15": 0.523,    # Feature 15が0.523で活性化
+                "1024": 3.217,  # Feature 1024が3.217で活性化
+                ...             # 活性化した全特徴（通常は数百〜数千個）
+            }
+        }
+        
         Args:
             prompt: 入力プロンプト
         
@@ -341,7 +355,7 @@ class FeedbackAnalyzer:
                 # これが応答の最初のトークン生成直前の状態
                 sae_activations_np = sae_features[0, -1:].cpu().numpy()  # [1, n_features]
             
-            # Top-k特徴を抽出
+            # Top-k特徴を抽出（ログ・可視化用、ML学習には使用しない）
             if self.feedback_config.save_all_tokens:
                 # 全トークンの平均を取る
                 mean_activations = sae_activations_np.mean(axis=0)
@@ -352,24 +366,26 @@ class FeedbackAnalyzer:
             top_k_indices = np.argsort(mean_activations)[-self.config.analysis.top_k_features:][::-1]
             top_k_features = [(int(idx), float(mean_activations[idx])) for idx in top_k_indices]
             
-            # 閾値以上の特徴のみ保存
+            # 0より大きい全ての活性化を保存（ML学習用の疎ベクトル）
+            # 重要: 閾値による事前フィルタリングは行わず、XGBoostの特徴選択に委ねる
             active_features = {}
-            threshold = self.config.analysis.activation_threshold
             
             if self.feedback_config.save_all_tokens:
                 # 各プロンプトトークン位置での活性化を保存
                 for token_idx in range(sae_activations_np.shape[0]):
                     token_activations = sae_activations_np[token_idx]
-                    active_indices = np.where(token_activations > threshold)[0]
-                    if len(active_indices) > 0:
-                        active_features[f"prompt_token_{token_idx}"] = {
+                    # 0より大きい全ての活性化を保存（疎ベクトル）
+                    active_indices = np.where(token_activations > 0)[0]
+                    if len(active_indices) > 0:  # 活性化がある場合のみ保存
+                        active_features[f"token_{token_idx}"] = {
                             int(idx): float(token_activations[idx]) 
                             for idx in active_indices
                         }
             else:
-                # プロンプト最後のトークンのみ（迎合性分析に最適）
+                # プロンプト最後のトークンのみ（推奨、迎合性分析に最適）
                 token_activations = sae_activations_np[0]
-                active_indices = np.where(token_activations > threshold)[0]
+                # 0より大きい全ての活性化を保存（疎ベクトル）
+                active_indices = np.where(token_activations > 0)[0]
                 active_features["prompt_last_token"] = {
                     int(idx): float(token_activations[idx]) 
                     for idx in active_indices
@@ -377,12 +393,14 @@ class FeedbackAnalyzer:
             
             sae_info = {
                 "hook_name": hook_name,
-                "activations": active_features,
-                "top_k_features": top_k_features,
+                "activations": active_features,  # 0より大きい全活性化（疎ベクトル、ML学習用）
+                "top_k_features": top_k_features,  # ログ・可視化用（ML学習には不使用）
                 "num_active_features": sum(len(v) for v in active_features.values()),
                 "save_all_tokens": self.feedback_config.save_all_tokens,
                 "num_tokens": sae_activations_np.shape[0],
-                "analyzed_position": "prompt_last_token" if not self.feedback_config.save_all_tokens else "all_prompt_tokens"
+                "analyzed_position": "prompt_last_token" if not self.feedback_config.save_all_tokens else "all_prompt_tokens",
+                "data_format": "sparse_vector",  # データ形式: 疎ベクトル（活性化>0の特徴のみ保存）
+                "total_sae_features": sae_features.shape[-1]  # SAEの全特徴数（例: 16384）
             }
         
         return response_text, sae_info
