@@ -159,7 +159,8 @@ class VisualizationConfig:
 @dataclass
 class FeedbackConfig:
     """Feedback実験専用の設定"""
-    save_all_tokens: bool = False  # 全トークンの活性化を保存（True）か最後のトークンのみ（False）
+    save_all_tokens: bool = False  # 全プロンプトトークンの活性化を保存（True）か最後のトークンのみ（False）
+    response_tokens_to_capture: int = 5  # 応答の最初の数トークンのSAE活性化を取得（0=取得しない、推奨: 3-5）
     process_all_variations: bool = True  # 5つのテンプレートバリエーションを全て処理
     save_per_template: bool = True  # テンプレートタイプ毎に個別に保存
     batch_size: int = 1  # バッチサイズ（メモリ管理用）

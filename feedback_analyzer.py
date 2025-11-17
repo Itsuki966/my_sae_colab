@@ -85,9 +85,10 @@ class FeedbackAnalyzer:
         if self.config.debug.verbose:
             print("🔧 FeedbackAnalyzer initialized")
             print(f"   📁 Results directory: {self.results_dir}")
-            print(f"   💾 Save mode: {'全プロンプトトークン' if self.feedback_config.save_all_tokens else 'プロンプト最終トークンのみ（推奨）'}")
+            print(f"   💾 Prompt tokens: {'全プロンプトトークン' if self.feedback_config.save_all_tokens else 'プロンプト最終トークンのみ（推奨）'}")
+            print(f"   💬 Response tokens: 最初の{self.feedback_config.response_tokens_to_capture}トークン{'（取得する）' if self.feedback_config.response_tokens_to_capture > 0 else '（取得しない）'}")
             print(f"   🎯 Target layer: {self.feedback_config.target_layer}")
-            print(f"   📍 分析位置: 応答の最初のトークン生成直前の内部状態")
+            print(f"   📍 分析位置: A) 応答生成直前（意図）+ B) 応答最初の数トークン（実行）")
             
     def get_model_device(self) -> str:
         """モデルの現在のデバイスを安全に取得"""
@@ -288,8 +289,9 @@ class FeedbackAnalyzer:
         """
         プロンプトに対して生成を実行し、SAE活性化を取得
         
-        重要: プロンプトの最後のトークンの内部状態（応答の最初のトークン生成直前）を取得します。
-        これは迎合性分析において、モデルの応答方針が最も明確に表現される状態です。
+        分析位置（ML学習とステップ4介入実験のため）:
+        A. プロンプト最後のトークン（応答生成直前の「意図・計画」状態） - 常に取得
+        B. 応答の最初の数トークン（迎合的応答の「実行・維持」状態） - オプション
         
         データ保存方針（ステップ3のML学習用）:
         - SAEの活性化値が0より大きい全ての特徴を保存（疎ベクトル形式）
@@ -298,11 +300,18 @@ class FeedbackAnalyzer:
         
         保存形式例:
         {
-            "prompt_last_token": {
-                "15": 0.523,    # Feature 15が0.523で活性化
-                "1024": 3.217,  # Feature 1024が3.217で活性化
-                ...             # 活性化した全特徴（通常は数百〜数千個）
-            }
+            "prompt_last_token": {  # A: 応答生成直前の「意図」状態
+                "15": 0.523,
+                "1024": 3.217,
+                ...
+            },
+            "response_token_0": {  # B: 応答1トークン目の「実行」状態
+                "23": 0.412,
+                "2048": 1.853,
+                ...
+            },
+            "response_token_1": { ... },  # 応答2トークン目
+            ...  # response_tokens_to_captureの設定値まで
         }
         
         Args:
@@ -332,28 +341,54 @@ class FeedbackAnalyzer:
             # 新規生成された部分のみを取り出してデコード
             new_tokens = generated_tokens[0, original_length:]  # プロンプト部分を除外
             response_text = self.model.to_string(new_tokens)
+            num_response_tokens = new_tokens.shape[0]
             
-            # SAE活性化を取得: プロンプトのみでフォワードパスを実行
-            # これにより、応答の最初のトークン生成直前の状態を取得
-            _, cache = self.model.run_with_cache(tokens)
+            # === A. プロンプト最後のトークンのSAE活性化を取得（応答生成直前の「意図」状態） ===
+            # プロンプトのみでフォワードパスを実行
+            _, prompt_cache = self.model.run_with_cache(tokens)
             
             # 対象レイヤーのフック名を取得
             hook_name = self.config.model.hook_name
             
-            # 活性化を取得
-            activations = cache[hook_name]  # shape: [batch, seq_len, d_model]
+            # プロンプトの活性化を取得
+            prompt_activations = prompt_cache[hook_name]  # shape: [batch, seq_len, d_model]
             
-            # SAEエンコード
-            sae_features = self.sae.encode(activations)  # shape: [batch, seq_len, n_features]
+            # SAEエンコード（プロンプト）
+            prompt_sae_features = self.sae.encode(prompt_activations)  # shape: [batch, seq_len, n_features]
             
-            # トークン保存設定に応じて処理
+            # === B. 応答の最初の数トークンのSAE活性化を取得（迎合的応答の「実行」状態） ===
+            response_sae_features_list = []
+            num_tokens_to_capture = min(
+                self.feedback_config.response_tokens_to_capture,
+                num_response_tokens
+            )
+            
+            if num_tokens_to_capture > 0:
+                # 応答トークンを1つずつ追加しながらフォワードパスを実行
+                for i in range(num_tokens_to_capture):
+                    # プロンプト + 応答の最初のi+1トークン
+                    tokens_with_response = generated_tokens[0, :original_length + i + 1].unsqueeze(0)
+                    _, response_cache = self.model.run_with_cache(tokens_with_response)
+                    
+                    # 応答トークン位置（プロンプト後の最後のトークン）の活性化を取得
+                    response_activations = response_cache[hook_name][:, -1:, :]  # 最後のトークンのみ
+                    response_sae_feature = self.sae.encode(response_activations)  # [1, 1, n_features]
+                    response_sae_features_list.append(response_sae_feature[0, 0].cpu().numpy())
+            
+            # 統合: プロンプトと応答のSAE特徴
+            sae_features = prompt_sae_features  # 既存コードとの互換性のため
+            
+            # === プロンプトトークンの保存設定に応じて処理 ===
             if self.feedback_config.save_all_tokens:
                 # 全プロンプトトークンの活性化を保存
-                sae_activations_np = sae_features[0].cpu().numpy()  # [seq_len, n_features]
+                prompt_sae_activations_np = prompt_sae_features[0].cpu().numpy()  # [seq_len, n_features]
             else:
                 # プロンプトの最後のトークンのみ保存（デフォルト、推奨）
                 # これが応答の最初のトークン生成直前の状態
-                sae_activations_np = sae_features[0, -1:].cpu().numpy()  # [1, n_features]
+                prompt_sae_activations_np = prompt_sae_features[0, -1:].cpu().numpy()  # [1, n_features]
+            
+            # 既存コードとの互換性のため
+            sae_activations_np = prompt_sae_activations_np
             
             # Top-k特徴を抽出（ログ・可視化用、ML学習には使用しない）
             if self.feedback_config.save_all_tokens:
@@ -391,6 +426,16 @@ class FeedbackAnalyzer:
                     for idx in active_indices
                 }
             
+            # === 応答の最初の数トークンのSAE活性化を追加 ===
+            for i, response_sae_np in enumerate(response_sae_features_list):
+                # 0より大きい全ての活性化を保存（疎ベクトル）
+                active_indices = np.where(response_sae_np > 0)[0]
+                if len(active_indices) > 0:
+                    active_features[f"response_token_{i}"] = {
+                        int(idx): float(response_sae_np[idx]) 
+                        for idx in active_indices
+                    }
+            
             sae_info = {
                 "hook_name": hook_name,
                 "activations": active_features,  # 0より大きい全活性化（疎ベクトル、ML学習用）
@@ -399,8 +444,14 @@ class FeedbackAnalyzer:
                 "save_all_tokens": self.feedback_config.save_all_tokens,
                 "num_tokens": sae_activations_np.shape[0],
                 "analyzed_position": "prompt_last_token" if not self.feedback_config.save_all_tokens else "all_prompt_tokens",
+                "response_tokens_captured": len(response_sae_features_list),  # 取得した応答トークン数
+                "num_response_tokens": num_response_tokens,  # 生成された応答トークンの総数
                 "data_format": "sparse_vector",  # データ形式: 疎ベクトル（活性化>0の特徴のみ保存）
-                "total_sae_features": sae_features.shape[-1]  # SAEの全特徴数（例: 16384）
+                "total_sae_features": prompt_sae_features.shape[-1],  # SAEの全特徴数（例: 16384）
+                "capture_positions": {
+                    "prompt_last_token": "応答生成直前の意図・計画状態",
+                    "response_tokens": f"応答の最初の{len(response_sae_features_list)}トークン（迎合的応答の実行・維持状態）" if response_sae_features_list else "取得なし"
+                }
             }
         
         return response_text, sae_info
@@ -584,7 +635,11 @@ class FeedbackAnalyzer:
                 "sae_id": self.config.model.sae_id,
                 "num_questions": len(self.results),
                 "save_all_tokens": self.feedback_config.save_all_tokens,
-                "analysis_position": "prompt_last_token (応答生成直前)" if not self.feedback_config.save_all_tokens else "all_prompt_tokens",
+                "response_tokens_captured": self.feedback_config.response_tokens_to_capture,
+                "analysis_position": {
+                    "prompt": "prompt_last_token (応答生成直前の意図)" if not self.feedback_config.save_all_tokens else "all_prompt_tokens",
+                    "response": f"最初の{self.feedback_config.response_tokens_to_capture}トークン（迎合的応答の実行・維持）" if self.feedback_config.response_tokens_to_capture > 0 else "取得なし"
+                },
                 "target_layer": self.feedback_config.target_layer,
                 "timestamp": datetime.now().isoformat(),
                 "config": {
