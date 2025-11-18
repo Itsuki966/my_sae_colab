@@ -82,6 +82,10 @@ class FeedbackAnalyzer:
         self.results_dir = Path("results/feedback")
         self.results_dir.mkdir(parents=True, exist_ok=True)
         
+        # 処理範囲を記録（ファイル名・ログ用）
+        self.processed_start_id = None
+        self.processed_end_id = None
+        
         if self.config.debug.verbose:
             print("🔧 FeedbackAnalyzer initialized")
             print(f"   📁 Results directory: {self.results_dir}")
@@ -589,20 +593,49 @@ class FeedbackAnalyzer:
         if self.model is None or self.sae is None:
             self.load_model_and_sae()
         
+        # 処理範囲を記録
+        self.processed_start_id = start
+        self.processed_end_id = start  # 初期値は開始位置
+        
         # 各質問グループを分析
         # プログレスバーに全体の問題数に対する進行状況を表示
         progress_desc = f"Processing questions ({start+1}-{end}/{total_questions})"
-        for idx, prompt_group in enumerate(tqdm(prompt_groups_to_process, desc=progress_desc)):
-            # 実際の質問IDは開始位置を考慮
-            actual_question_id = start + idx
-            result = self.analyze_question_group(actual_question_id, prompt_group)
-            self.results.append(result)
-            
-            # メモリ最適化を実行
-            if hasattr(self, 'optimize_memory_usage'):
-                self.optimize_memory_usage()
-            elif torch.cuda.is_available():
-                torch.cuda.empty_cache()
+        try:
+            for idx, prompt_group in enumerate(tqdm(prompt_groups_to_process, desc=progress_desc)):
+                # 実際の質問IDは開始位置を考慮
+                actual_question_id = start + idx
+                
+                try:
+                    result = self.analyze_question_group(actual_question_id, prompt_group)
+                    self.results.append(result)
+                    
+                    # 処理完了した最後のquestion_idを更新
+                    self.processed_end_id = actual_question_id
+                    
+                    # メモリ最適化を実行
+                    if hasattr(self, 'optimize_memory_usage'):
+                        self.optimize_memory_usage()
+                    elif torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                        
+                except RuntimeError as e:
+                    # CUDAメモリエラーなどをキャッチ
+                    if "out of memory" in str(e).lower() or "cuda" in str(e).lower():
+                        print(f"\n⚠️ メモリエラーが発生しました: {e}")
+                        print(f"💾 Question ID {self.processed_start_id} から {self.processed_end_id} までの結果を保存します...")
+                        # エラー発生時に現在までの結果を保存
+                        self.save_results(error_recovery=True)
+                        raise  # エラーを再度発生させて処理を停止
+                    else:
+                        raise  # その他のエラーはそのまま再発生
+        
+        except Exception as e:
+            # その他の予期しないエラーもキャッチして保存
+            if self.results:  # 結果がある場合のみ保存
+                print(f"\n⚠️ エラーが発生しました: {e}")
+                print(f"💾 Question ID {self.processed_start_id} から {self.processed_end_id} までの結果を保存します...")
+                self.save_results(error_recovery=True)
+            raise
         
         if self.config.debug.verbose:
             print("\n" + "="*60)
@@ -610,13 +643,15 @@ class FeedbackAnalyzer:
             print("="*60)
             print(f"📊 Processed {len(self.results)} questions")
             print(f"💾 Total variations: {sum(len(r.variations) for r in self.results)}")
+            print(f"🎯 Question ID range: {self.processed_start_id} to {self.processed_end_id}")
     
-    def save_results(self, output_path: Optional[str] = None):
+    def save_results(self, output_path: Optional[str] = None, error_recovery: bool = False):
         """
         分析結果を保存
         
         Args:
             output_path: 出力ファイルパス（Noneの場合は自動生成）
+            error_recovery: エラー回復モードかどうか（メモリエラー等で途中保存する場合True）
         """
         if not self.results:
             print("⚠️ No results to save")
@@ -625,7 +660,14 @@ class FeedbackAnalyzer:
         if output_path is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             model_name = self.config.model.name.replace("/", "_")
-            output_path = self.results_dir / f"feedback_analysis_{model_name}_{timestamp}.json"
+            
+            # ファイル名にquestion_id範囲を追加
+            if self.processed_start_id is not None and self.processed_end_id is not None:
+                range_str = f"{self.processed_start_id}-{self.processed_end_id}"
+                prefix = "feedback_analysis_partial" if error_recovery else "feedback_analysis"
+                output_path = self.results_dir / f"{prefix}_{model_name}_{timestamp}_{range_str}.json"
+            else:
+                output_path = self.results_dir / f"feedback_analysis_{model_name}_{timestamp}.json"
         
         # 結果を辞書に変換
         output_data = {
@@ -634,6 +676,12 @@ class FeedbackAnalyzer:
                 "sae_release": self.config.model.sae_release,
                 "sae_id": self.config.model.sae_id,
                 "num_questions": len(self.results),
+                "question_id_range": {
+                    "start": self.processed_start_id,
+                    "end": self.processed_end_id,
+                    "total_processed": len(self.results)
+                },
+                "error_recovery": error_recovery,
                 "save_all_tokens": self.feedback_config.save_all_tokens,
                 "response_tokens_captured": self.feedback_config.response_tokens_to_capture,
                 "analysis_position": {
@@ -682,6 +730,12 @@ class FeedbackAnalyzer:
             print(f"\n💾 Results saved to: {output_path}")
             file_size = os.path.getsize(output_path) / 1024 / 1024
             print(f"   📦 File size: {file_size:.2f} MB")
+            if self.processed_start_id is not None and self.processed_end_id is not None:
+                print(f"   🎯 Question ID range: {self.processed_start_id} to {self.processed_end_id}")
+            if error_recovery:
+                print(f"   ⚠️ This is a partial save due to error recovery")
+        
+        return output_path
     
     def run_complete_analysis(self, sample_size: Optional[int] = None, start_index: Optional[int] = None, end_index: Optional[int] = None):
         """
