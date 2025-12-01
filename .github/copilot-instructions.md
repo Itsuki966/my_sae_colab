@@ -9,67 +9,38 @@
 ### ステップ1: タスク実行とデータ取得
 * **モデル:** LLM (Gemma-2-9b-it)
 * **タスク:** 5つのテンプレートタイプ(base, I really like, I really dislike, I wrote, I didn't write)で、論理的な矛盾や統計的根拠に欠けた議論を含むトピックを渡し、それに対するコメントをさせる。
-* **特徴取得:** タスク実行時に`SAE-lens`を利用する。ステップ3の機械学習モデル（XGBoost等）での学習とSHAP分析のため、SAEの**活性化した全特徴（活性化 > 0）のIDと値の辞書**（`sae_activations`）を保存する。
+* **特徴取得:** `SAE-lens`を利用する。ステップ3の因果分析（Attribution Patching）のため、**プロンプトと生成された回答の全トークン列**を保存しておくことが重要（Teacher Forcing用）。
 * **実行環境:** Google Driveに実行ファイルを保存し、Google Colab上で実行する。
 
 ### ステップ2: 迎合性フラグの付与とデータ保存
 * **評価:** LLMが生成したコメントを`gpt5-mini`に渡し、「base」テンプレートの出力と比較させる。
 * **フラグ付与:** 他テンプレートが「base」より迎合しているか判断させ、`sycophancy_flag=1` (迎合) / `0` (非迎合) と `reason` (判断理由) を生成させる。
-* **保存:** ステップ1の結果と合わせ、以下のJSON構造で保存する。
+* **保存:** ステップ1の結果と合わせ、JSON形式で保存する。
 
-* **Feedback実験 出力フォーマット構造**
-    *(注: これは実際のデータではなく、ファイルの構造を示すためのものです)*
-    ```json
-    {
-      "metadata": {
-        "model_name": "[string]",
-        "sae_release": "[string]",
-        "sae_id": "[string]",
-        // ... 他のメタデータ ...
-      },
-      "results": [
-        {
-          "question_id": "[number]",
-          "dataset": "[string]",
-          "base_text": "[string]",
-          "variations": [
-            {
-              "template_type": "[string]",
-              "prompt": "[string]",
-              "response": "[string]",
-              "sae_activations": {
-                // 変更点： 0より大きい全活性化特徴を保存
-                "prompt_last_token": {
-                  "[feature_id (string)]": "[activation_value (float)]",
-                  "[feature_id (string)]": "[activation_value (float)]",
-                  "...": "..."
-                }
-              },
-              // ... 他のフィールド ...
-              "sycophancy_flag": "[0 or 1]",
-              "reason": "[string]"
-            }
-          ]
-        }
-      ]
-    }
-    ```
-
-### ステップ3: 特徴の特定 (MLモデル + SHAP)
-* **データ準備:** ステップ2のJSONから`sae_activations`（特徴ベクトル、疎行列として扱う）と`sycophancy_flag`（ラベル）を抽出する。
-* **モデル学習:** SAE特徴を入力(X)、`sycophancy_flag`を正解ラベル(Y)として、XGBoost (XGBClassifier) などの機械学習モデルを学習させる。
-* **SHAP分析:** 学習済みモデルに対し`shap.TreeExplainer`を適用し、各特徴のSHAP値を計算する。
-* **特徴特定:** `shap.summary_plot` を分析し、迎合性（Flag=1）の予測に最も強く**正の**寄与をしているSAE特徴を特定する。
+### ステップ3: 特徴の特定 (Attribution Patching / 因果効果分析)
+* **目的:** モデルの出力（迎合的な回答）に対し、因果的な影響を与えているSAE特徴を特定する。従来の相関ベース（SHAP）ではなく、勾配情報を用いた**Attribution Patching (AtP)** を採用する。
+* **手法 (Teacher Forcing):**
+    * 新たに生成を行うのではなく、ステップ2で保存された「プロンプト + 実際の回答」をモデルに入力する（Teacher Forcing）。
+    * `model.eval()` かつ `grad_enabled=True` の状態でForward Passを行い、生成時の内部状態を再現する。
+* **Metric (ターゲット):**
+    * 迎合的な回答トークンと、非迎合的な回答トークン（Base回答など）の **Logit Difference** をターゲットとする。
+    * $Metric = \text{Logit}(y_{syc}) - \text{Logit}(y_{base})$
+* **スコア計算:**
+    * Metricに対する各特徴量の勾配（Gradient）を計算する（Backward Pass）。
+    * **AtP Score** = $\text{Activation} \times \text{Gradient}$ を算出し、スコアが高い特徴を「迎合性特徴」として特定する。
+* **比較検証:** 必要に応じて、LightGBM+SHAP（相関分析）の結果とも比較し、特徴の妥当性を評価する。
 
 ### ステップ4: 介入と出力操作
-* **介入（Ablation）:** ステップ3で特定した「迎合性特徴」のリストを取得する。
-* **フック:** `HookedTransformer`のフック機能を用い、これらの特徴の活性化を強制的に0にする（Ablationする）介入ロジックを実装する。
+* **介入（Ablation/Steering）:** ステップ3で特定した「迎合性特徴」のリストを取得する。
+* **フック:** `HookedTransformer`のフック機能を用い、これらの特徴の活性化を強制的に0にする（Ablation）、あるいは負の方向にステアリングする介入ロジックを実装する。
 * **評価:** 介入状態で迎合的なプロンプト（例: "I really like..."）を入力し、モデルの応答が非迎合的（"base"の応答に近い）になるか、迎合性が抑制されるかを定量・定性的に評価する。
 
 ## 3. 現在の進捗
-- ステップ1とステップ2は完了していたが、ステップ１のプログラムに問題があったため、もう一度実行する。
+- ステップ1とステップ2（データ生成とフラグ付与）は完了済み。
+- ステップ3の分析手法を「Attribution Patching」に変更し、勾配計算用のスクリプトを実装・実行する段階。
 
 ## 4. このワークスペースの目的
-- このワークスペースは上記の研究ステップの１を実行するためのものです。
+- このワークスペースは上記の研究ステップ（特にステップ1,3の因果分析実装）を実行するためのものです。
+- ステップ2の評価・フラグ付与は別ワークスペースで実施しています。
 - Google Colab上で実行することを想定しています。
 - 実行結果はGoogle Driveに保存されます。
