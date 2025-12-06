@@ -45,17 +45,44 @@
     3.  **Minimum Impact:** `Global Mean AtP > Threshold` (ノイズ除去)
 * **出力:** 上記条件を満たす特徴量をスコア順にソートし、上位 $K$ 個（例: 20, 50, 100）をリスト化する。
 
-### Step 5: 介入実験 (Ablation Study)
-特定された特徴量に対して介入を行い、効果を検証する。
+### Step 5: 介入実験と評価 (Intervention & Evaluation)
 
-* **介入手法:** **Geometric Subtraction (Zero-Ablation)**
-    * HookedTransformerのフック機能を使用。
-    * 特定された特徴量の方向ベクトルを、残差ストリームから活性値分だけ引き算して消去する。
-    * $$x' = x - (Activation(f_i) \times d_i)$$
-* **評価指標:**
-    1.  **Sycophancy Reduction:** 介入後に生成された回答が、どれだけ迎合しなくなったか（Logit Differenceの減少、または生成テキストの再判定）。
-    2.  **Side Effects (Safety):** 言語モデルとしての能力が保たれているか。
-        * 指標: Perplexity の変化、または生成テキストの定性評価（崩壊していないか）。
+特定された「迎合性特徴量」に対し介入を行い、その効果と副作用を定量・定性の両面から検証する。
+
+#### 1. 実験設定
+* **データ:** 特徴量の特定に使用していない**未知のデータ（Held-out data）**を使用する。
+* **比較条件:**
+    1.  **Baseline (No Intervention):** 介入なしの通常のモデル推論。
+        * *最適化:* 計算リソース削減のため、**SAEのフックや計算は一切行わず**、純粋なモデルとして生成を行う。
+    2.  **Targeted Ablation:** 特定した特徴量（上位K個）を除去した状態での推論。
+
+#### 2. 介入手法: Geometric Subtraction (Zero-Ablation)
+* **手法:** `HookedTransformer` のフック機能を用い、残差ストリームから特定の特徴量成分のみを「引き算」する。
+* **計算式:**
+    $$x_{post} = x_{pre} - \sum_{i \in \text{Target}} (Activation(f_i) \times d_i)$$
+* **実装ロジック:**
+    1.  フック内で `sae.encode(x)` を実行し、全活性値を取得。
+    2.  ターゲット特徴量 ($i \in \text{Target}$) 以外の活性値をすべて **0 (ゼロ) にマスク**する。
+    3.  マスクされた活性値を用いて再構成ベクトル（Reconstruction）を計算する。
+    4.  元の残差ストリームから再構成ベクトルを減算する。
+
+#### 3. 評価指標 (Metrics)
+実験結果は以下の3つの観点から評価する。
+
+1.  **Sycophancy Rate (迎合率):**
+    * GPT-4oによる判定（Step 2と同様）。
+    * 指標: 介入前後で迎合フラグが `1` から `0` に変化した割合。
+    * **統計検定:** 変化が有意であるかを確認するため、**McNemar検定**を実施する。
+
+2.  **Perplexity (PPL):**
+    * ツール: HuggingFace `evaluate` library。
+    * 目的: モデルの言語生成能力が崩壊していないかの**足切り（Sanity Check）**。
+    * 基準: Baselineと比較してPPLが著しく増加していないこと。
+
+3.  **Naturalness Score (自然さスコア):**
+    * ツール: GPT-4o。
+    * 目的: 文法的には正しくても文脈が不自然になっていないかを確認。
+    * スコア: 1（破綻）〜 5（自然）のリッカート尺度で評価。
 
 ## 3. コーディング規約と注意点
 * **ライブラリ:** `transformer_lens` (HookedTransformer), `sae_lens`, `torch`, `pandas` を主に使用する。
