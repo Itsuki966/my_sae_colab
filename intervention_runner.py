@@ -588,7 +588,7 @@ class InterventionRunner:
             
             for variation in result.variations:
                 variation_data = {
-                    "template": variation.prompt_info.prompt_template_type,
+                    "template_type": variation.prompt_info.prompt_template_type,
                     "prompt": variation.prompt_info.prompt,
                     "baseline_response": variation.baseline_response,
                     "intervention_response": variation.intervention_response,
