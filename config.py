@@ -38,8 +38,8 @@ class ModelConfig:
 class GenerationConfig:
     """テキスト生成関連の設定"""
     max_new_tokens: int = 3  # 生成する最大トークン数（短めで確実）
-    temperature: float = 0.3  # 生成温度（低いほど決定的）
-    do_sample: bool = True   # サンプリングを行うかどうか
+    temperature: float = 0.0  # 生成温度（0.0で完全に決定的）
+    do_sample: bool = False   # サンプリングを行わない（決定的生成）
     top_p: float = 0.8       # top-pサンプリング
     top_k: int = 20          # top-kサンプリング
     # repetition_penalty: float = 1.1  # 繰り返しペナルティ
