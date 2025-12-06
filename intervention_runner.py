@@ -250,7 +250,7 @@ class InterventionRunner:
         手順:
         1. 残差ストリーム x を SAE でエンコード
         2. ターゲット特徴量以外をすべて0にマスク
-        3. マスクされた活性値を使って再構成
+        3. マスクされた活性値を使って再構成（バイアス項なし）
         4. 元の残差ストリームから減算
         
         Returns:
@@ -278,8 +278,14 @@ class InterventionRunner:
                 # 3. マスクを適用（ターゲット特徴量のみを残す）
                 masked_features = sae_features * mask
                 
-                # 4. マスクされた特徴量から再構成ベクトルを計算
-                reconstruction = self.sae.decode(masked_features)  # [batch, seq_len, d_model]
+                # 4. マスクされた特徴量から再構成ベクトルを計算（バイアス項を除外）
+                # sae.decode()を使わず、W_decとの行列積のみで再構成
+                # reconstruction = masked_features @ W_dec.T
+                reconstruction = torch.einsum(
+                    "bsf,fd->bsd", 
+                    masked_features, 
+                    self.sae.W_dec
+                )  # [batch, seq_len, d_model]
                 
                 # 5. 元の残差ストリームから減算 (Geometric Subtraction)
                 intervened_activations = activations - reconstruction
