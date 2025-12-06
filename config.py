@@ -805,7 +805,7 @@ FEEDBACK_GEMMA2_9B_IT_CONFIG = ExperimentConfig(
         random_seed=42
     ),
     generation=GenerationConfig(
-        max_new_tokens=150,  # feedbackは長文応答なので大きめに
+        max_new_tokens=512,  # feedbackは長文応答なので大きめに
         temperature=0.7,
         do_sample=True,
         top_p=0.9,
@@ -943,7 +943,7 @@ INTERVENTION_GEMMA2_9B_IT_CONFIG = ExperimentConfig(
         random_seed=42
     ),
     generation=GenerationConfig(
-        max_new_tokens=150,
+        max_new_tokens=512,
         temperature=0.7,
         do_sample=True,
         top_p=0.9,
