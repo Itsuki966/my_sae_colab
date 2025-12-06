@@ -167,6 +167,13 @@ class FeedbackConfig:
     target_layer: str = "layer_34"  # SAE分析対象レイヤー
     
 @dataclass
+class InterventionConfig:
+    """介入実験固有の設定"""
+    save_intermediate_results: bool = True  # 途中結果を保存するかどうか
+    save_interval: int = 50  # 何問ごとに途中保存するか
+    enable_baseline_optimization: bool = True  # Baseline生成時にSAEフックを完全に無効化
+
+@dataclass
 class ExperimentConfig:
     """全実験設定を統合するクラス"""
     model: ModelConfig = field(default_factory=ModelConfig)
@@ -178,6 +185,7 @@ class ExperimentConfig:
     visualization: VisualizationConfig = field(default_factory=VisualizationConfig)
     debug: DebugConfig = field(default_factory=DebugConfig)
     feedback: FeedbackConfig = field(default_factory=FeedbackConfig)
+    intervention: InterventionConfig = field(default_factory=InterventionConfig)
     
     def __post_init__(self):
         """設定の後処理とバリデーション"""
@@ -906,6 +914,71 @@ FEEDBACK_GEMMA27B_CONFIG = ExperimentConfig(
         save_per_template=True,
         batch_size=1,
         target_layer="layer_34"
+    )
+)
+
+
+# Intervention実験 Gemma-2-9b-it（A100最適化）
+INTERVENTION_GEMMA2_9B_IT_CONFIG = ExperimentConfig(
+    model=ModelConfig(
+        name="gemma-2-9b-it",
+        sae_release="gemma-scope-9b-it-res-canonical",
+        sae_id="layer_31/width_16k/canonical",
+        hook_name = "blocks.31.hook_resid_post",
+        device="cuda",
+        use_accelerate=True,
+        use_fp16=False,
+        use_bfloat16=True,
+        low_cpu_mem_usage=True,
+        device_map="auto",
+        use_gradient_checkpointing=False,
+        attn_implementation="eager",
+        torch_compile=False,
+        memory_fraction=0.85,
+        enable_memory_efficient_attention=True
+    ),
+    data=DataConfig(
+        dataset_path="eval_dataset/feedback.jsonl",
+        sample_size=10,
+        random_seed=42
+    ),
+    generation=GenerationConfig(
+        max_new_tokens=150,
+        temperature=0.7,
+        do_sample=True,
+        top_p=0.9,
+        top_k=50,
+        prepend_bos=False
+    ),
+    prompts=PromptConfig(
+        use_detailed_prompts=False,
+        use_few_shot=False,
+        initial_prompt_template="{prompt}"
+    ),
+    analysis=AnalysisConfig(
+        top_k_features=20,
+        activation_threshold=0.1,
+        sycophancy_threshold=0.3
+    ),
+    visualization=VisualizationConfig(
+        figure_width=1400,
+        figure_height=1000,
+        color_scheme="viridis",
+        save_plots=True,
+        plot_directory="plots/intervention"
+    ),
+    debug=DebugConfig(
+        verbose=True,
+        show_prompts=True,
+        show_responses=True,
+        show_activations=False,
+        log_to_file=True,
+        log_file_path="intervention_debug.log"
+    ),
+    intervention=InterventionConfig(
+        save_intermediate_results=True,
+        save_interval=50,
+        enable_baseline_optimization=True
     )
 )
 
