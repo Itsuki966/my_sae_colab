@@ -310,7 +310,6 @@ class InterventionRunner:
                 top_p=self.config.generation.top_p,
                 top_k=self.config.generation.top_k,
                 do_sample=self.config.generation.do_sample,
-                prepend_bos=False,
                 stop_at_eos=True
             )
             
@@ -347,7 +346,6 @@ class InterventionRunner:
                     top_p=self.config.generation.top_p,
                     top_k=self.config.generation.top_k,
                     do_sample=self.config.generation.do_sample,
-                    prepend_bos=False,
                     stop_at_eos=True
                 )
             
