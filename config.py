@@ -947,8 +947,7 @@ INTERVENTION_GEMMA2_9B_IT_CONFIG = ExperimentConfig(
         temperature=0.7,
         do_sample=True,
         top_p=0.9,
-        top_k=50,
-        prepend_bos=False
+        top_k=50
     ),
     prompts=PromptConfig(
         use_detailed_prompts=False,
