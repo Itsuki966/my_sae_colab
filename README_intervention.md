@@ -75,14 +75,66 @@ baseline_response = runner.generate_baseline(prompt)
 #### 4.2 Intervention生成（介入あり）
 
 ```python
-intervention_response = runner.generate_with_intervention(prompt)
+intervention_response, activation_info = runner.generate_with_intervention(prompt)
 ```
 
 **処理:**
 - 介入フックを適用した状態で推論
 - 残差ストリームから特定特徴量を除去
+- **NEW**: マスクした特徴量の活性化統計を収集
 
-### 5. 結果の保存
+**活性化統計情報 (`activation_info`):**
+```python
+{
+  "per_feature": {
+    "123": {
+      "mean": 0.45,              # 活性化の平均値
+      "max": 2.34,               # 最大活性値
+      "min": 0.01,               # 最小活性値（非ゼロ）
+      "std": 0.32,               # 標準偏差
+      "num_active_tokens": 15,   # 活性化したトークン数
+      "total_tokens": 128,       # 総トークン数
+      "sparsity": 0.117          # 活性化率
+    },
+    "456": { ... },
+    ...
+  },
+  "overall": {
+    "mean_across_features": 0.38,
+    "max_across_features": 2.34,
+    "total_active_features": 45,
+    "num_intervention_features": 20
+  }
+}
+```
+
+### 5. 活性化サマリの取得
+
+実験全体の活性化統計を集約：
+
+```python
+summary = runner.get_activation_summary()
+```
+
+**出力例:**
+```python
+{
+  "num_questions": 100,
+  "num_prompts": 500,
+  "num_intervention_features": 20,
+  "per_feature_summary": {
+    "123": {
+      "avg_mean_activation": 0.42,
+      "avg_max_activation": 2.15,
+      "avg_sparsity": 0.15,
+      "num_prompts": 500
+    },
+    ...
+  }
+}
+```
+
+### 6. 結果の保存
 
 ```python
 output_path = runner.save_results()
@@ -90,6 +142,11 @@ output_path = runner.save_results()
 
 **保存先:**
 - `results/intervention/intervention_{model}_{timestamp}_{range}.json`
+
+**保存内容:**
+- Baseline/Intervention両方の応答
+- 各プロンプトの活性化統計（`activation_stats`）
+- 実験全体の活性化サマリ（`activation_summary`）
 
 ## 介入の数式
 
@@ -219,6 +276,20 @@ def intervention_hook(activations, hook):
     }
   },
   "intervention_features": [123, 456, 789, ...],
+  "activation_summary": {
+    "num_questions": 100,
+    "num_prompts": 500,
+    "num_intervention_features": 20,
+    "per_feature_summary": {
+      "123": {
+        "avg_mean_activation": 0.42,
+        "avg_max_activation": 2.15,
+        "avg_sparsity": 0.15,
+        "num_prompts": 500
+      },
+      ...
+    }
+  },
   "results": [
     {
       "question_id": 0,
@@ -237,7 +308,27 @@ def intervention_hook(activations, hook):
             "baseline_response_length": 145,
             "intervention_response_length": 138,
             "timestamp": "2025-12-06T14:30:25.123456",
-            "gpu_memory_mb": 8192.5
+            "gpu_memory_mb": 8192.5,
+            "activation_stats": {
+              "per_feature": {
+                "123": {
+                  "mean": 0.45,
+                  "max": 2.34,
+                  "min": 0.01,
+                  "std": 0.32,
+                  "num_active_tokens": 15,
+                  "total_tokens": 128,
+                  "sparsity": 0.117
+                },
+                ...
+              },
+              "overall": {
+                "mean_across_features": 0.38,
+                "max_across_features": 2.34,
+                "total_active_features": 45,
+                "num_intervention_features": 20
+              }
+            }
           }
         },
         {
@@ -420,6 +511,54 @@ runner = InterventionRunner(
     intervention_feature_ids=intervention_feature_ids
 )
 output_path = runner.run_complete_experiment()
+```
+
+### 活性化統計の分析
+
+実験後に活性化統計を取得：
+
+```python
+# 実験全体のサマリを取得
+summary = runner.get_activation_summary()
+
+print(f"Total questions: {summary['num_questions']}")
+print(f"Total prompts: {summary['num_prompts']}")
+print(f"Intervention features: {summary['num_intervention_features']}")
+
+# 各特徴量の統計を確認
+for feature_id, stats in summary['per_feature_summary'].items():
+    print(f"\nFeature {feature_id}:")
+    print(f"  Avg mean activation: {stats['avg_mean_activation']:.3f}")
+    print(f"  Avg max activation: {stats['avg_max_activation']:.3f}")
+    print(f"  Avg sparsity: {stats['avg_sparsity']:.3f}")
+    print(f"  Num prompts analyzed: {stats['num_prompts']}")
+```
+
+### 保存された結果からの統計分析
+
+```python
+import json
+
+# 保存されたJSONファイルを読み込み
+with open("results/intervention/intervention_gemma-2-9b-it_20251208_120000_0-99.json", 'r') as f:
+    data = json.load(f)
+
+# 実験全体のサマリ
+activation_summary = data['activation_summary']
+print(f"Total intervention features: {activation_summary['num_intervention_features']}")
+
+# 各特徴量の詳細統計
+for feature_id, stats in activation_summary['per_feature_summary'].items():
+    if stats['avg_mean_activation'] > 0.5:  # 強く活性化した特徴のみ
+        print(f"Feature {feature_id}: mean={stats['avg_mean_activation']:.3f}, sparsity={stats['avg_sparsity']:.3f}")
+
+# 各プロンプトの活性化統計
+for result in data['results']:
+    for variation in result['variations']:
+        activation_stats = variation['metadata']['activation_stats']
+        print(f"\nPrompt (question {result['question_id']}, {variation['template_type']}):")
+        print(f"  Overall mean: {activation_stats['overall']['mean_across_features']:.3f}")
+        print(f"  Total active features: {activation_stats['overall']['total_active_features']}")
 ```
 
 ## トラブルシューティング
