@@ -75,6 +75,12 @@ class InterventionRunner:
         self.sae = None
         self.results: List[QuestionInterventionResult] = []
         
+        # 活性化分析用の記録
+        self.activation_stats: Dict[str, Any] = {
+            'per_feature': {},  # 特徴量ごとの統計
+            'per_prompt': []    # プロンプトごとの統計
+        }
+        
         # 介入専用設定の取得
         self.intervention_config = getattr(config, 'intervention', None)
         if self.intervention_config is None:
@@ -243,7 +249,109 @@ class InterventionRunner:
             if torch.cuda.is_available():
                 print(f"   💾 GPU Memory: {torch.cuda.memory_allocated()/1024**3:.2f}GB allocated")
     
-    def create_intervention_hook(self):
+    def _collect_activation_statistics(
+        self, 
+        sae_features: torch.Tensor, 
+        masked_features: torch.Tensor, 
+        activation_info: Dict[str, Any]
+    ):
+        """
+        マスクした特徴量の活性化統計情報を収集
+        
+        Args:
+            sae_features: 全SAE特徴量の活性値 [batch, seq_len, n_features]
+            masked_features: マスク適用後の特徴量 [batch, seq_len, n_features]
+            activation_info: 統計情報を格納する辞書（破壊的更新）
+        """
+        # 各ターゲット特徴量の統計を計算
+        feature_stats = {}
+        
+        for feature_id in self.intervention_feature_ids:
+            # 該当特徴量の活性値を抽出 [batch, seq_len]
+            activations = sae_features[:, :, feature_id]
+            
+            # 統計計算（0でないトークン位置のみ）
+            non_zero_mask = activations > 0
+            non_zero_activations = activations[non_zero_mask]
+            
+            if len(non_zero_activations) > 0:
+                feature_stats[str(feature_id)] = {
+                    "mean": float(non_zero_activations.mean().item()),
+                    "max": float(non_zero_activations.max().item()),
+                    "min": float(non_zero_activations.min().item()),
+                    "std": float(non_zero_activations.std().item()),
+                    "num_active_tokens": int(non_zero_mask.sum().item()),
+                    "total_tokens": int(activations.numel()),
+                    "sparsity": float(non_zero_mask.sum().item() / activations.numel())
+                }
+            else:
+                feature_stats[str(feature_id)] = {
+                    "mean": 0.0,
+                    "max": 0.0,
+                    "min": 0.0,
+                    "std": 0.0,
+                    "num_active_tokens": 0,
+                    "total_tokens": int(activations.numel()),
+                    "sparsity": 0.0
+                }
+        
+        # 全体統計
+        all_masked_activations = masked_features[masked_features > 0]
+        
+        activation_info.update({
+            "per_feature": feature_stats,
+            "overall": {
+                "mean_across_features": float(all_masked_activations.mean().item()) if len(all_masked_activations) > 0 else 0.0,
+                "max_across_features": float(all_masked_activations.max().item()) if len(all_masked_activations) > 0 else 0.0,
+                "total_active_features": int((masked_features > 0).sum().item()),
+                "num_intervention_features": len(self.intervention_feature_ids)
+            }
+        })
+    
+    def get_activation_summary(self) -> Dict[str, Any]:
+        """
+        実験全体の活性化統計サマリを取得
+        
+        Returns:
+            全プロンプトにわたる活性化統計の集約
+        """
+        if not self.results:
+            return {"error": "No results available. Run experiment first."}
+        
+        # 各特徴量の全プロンプトにわたる統計を集約
+        feature_aggregated = {}
+        for feature_id in self.intervention_feature_ids:
+            feature_id_str = str(feature_id)
+            means = []
+            maxs = []
+            sparsities = []
+            
+            for question_result in self.results:
+                for variation in question_result.variations:
+                    stats = variation.metadata.get("activation_stats", {})
+                    per_feature = stats.get("per_feature", {})
+                    
+                    if feature_id_str in per_feature:
+                        means.append(per_feature[feature_id_str]["mean"])
+                        maxs.append(per_feature[feature_id_str]["max"])
+                        sparsities.append(per_feature[feature_id_str]["sparsity"])
+            
+            if means:
+                feature_aggregated[feature_id_str] = {
+                    "avg_mean_activation": float(sum(means) / len(means)),
+                    "avg_max_activation": float(sum(maxs) / len(maxs)),
+                    "avg_sparsity": float(sum(sparsities) / len(sparsities)),
+                    "num_prompts": len(means)
+                }
+        
+        return {
+            "num_questions": len(self.results),
+            "num_prompts": sum(len(q.variations) for q in self.results),
+            "num_intervention_features": len(self.intervention_feature_ids),
+            "per_feature_summary": feature_aggregated
+        }
+    
+    def create_intervention_hook(self, collect_activations: bool = True):
         """
         Geometric Subtraction (Zero-Ablation) による介入フックを作成
         
@@ -253,9 +361,14 @@ class InterventionRunner:
         3. マスクされた活性値を使って再構成（バイアス項なし）
         4. 元の残差ストリームから減算
         
+        Args:
+            collect_activations: 活性化情報を収集するかどうか
+        
         Returns:
-            フック関数
+            フック関数、活性化統計情報の辞書
         """
+        activation_info = {}
+        
         def intervention_hook(activations, hook):
             """
             Args:
@@ -278,6 +391,14 @@ class InterventionRunner:
                 # 3. マスクを適用（ターゲット特徴量のみを残す）
                 masked_features = sae_features * mask
                 
+                # 活性化情報の収集
+                if collect_activations:
+                    self._collect_activation_statistics(
+                        sae_features, 
+                        masked_features, 
+                        activation_info
+                    )
+                
                 # 4. マスクされた特徴量から再構成ベクトルを計算（バイアス項を除外）
                 # sae.decode()を使わず、W_decとの行列積のみで再構成
                 # reconstruction = masked_features @ W_dec.T
@@ -292,7 +413,7 @@ class InterventionRunner:
                 
                 return intervened_activations
         
-        return intervention_hook
+        return intervention_hook, activation_info
     
     def generate_baseline(self, prompt: str) -> str:
         """
@@ -325,22 +446,23 @@ class InterventionRunner:
             
             return response_text
     
-    def generate_with_intervention(self, prompt: str) -> str:
+    def generate_with_intervention(self, prompt: str, collect_activations: bool = True) -> Tuple[str, Dict[str, Any]]:
         """
         Intervention: 介入フックを適用した状態での生成
         
         Args:
             prompt: 入力プロンプト
+            collect_activations: 活性化情報を収集するかどうか
         
         Returns:
-            生成されたテキスト
+            生成されたテキスト、活性化統計情報の辞書
         """
         with torch.no_grad():
             tokens = self.model.to_tokens(prompt)
             original_length = tokens.shape[1]
             
             # 介入フックを作成
-            hook_fn = self.create_intervention_hook()
+            hook_fn, activation_info = self.create_intervention_hook(collect_activations)
             hook_name = self.config.model.hook_name
             
             # フックを適用して生成
@@ -359,7 +481,7 @@ class InterventionRunner:
             new_tokens = generated_tokens[0, original_length:]
             response_text = self.model.to_string(new_tokens)
             
-            return response_text
+            return response_text, activation_info
     
     def analyze_prompt_variation(self, prompt_info: FeedbackPromptInfo) -> InterventionResult:
         """
@@ -387,7 +509,7 @@ class InterventionRunner:
         
         # Intervention生成
         start_time = datetime.now()
-        intervention_response = self.generate_with_intervention(prompt_info.prompt)
+        intervention_response, activation_info = self.generate_with_intervention(prompt_info.prompt)
         intervention_time = (datetime.now() - start_time).total_seconds() * 1000
         
         if self.config.debug.show_responses:
@@ -399,7 +521,8 @@ class InterventionRunner:
             "intervention_generation_time_ms": intervention_time,
             "baseline_response_length": len(baseline_response),
             "intervention_response_length": len(intervention_response),
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
+            "activation_stats": activation_info  # 活性化統計情報を追加
         }
         
         if torch.cuda.is_available():
@@ -579,6 +702,7 @@ class InterventionRunner:
                 }
             },
             "intervention_features": self.intervention_feature_ids,
+            "activation_summary": self.get_activation_summary(),  # 活性化サマリを追加
             "results": []
         }
         
