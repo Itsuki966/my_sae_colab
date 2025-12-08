@@ -791,8 +791,8 @@ INTERVENTION_GEMMA2_9B_IT_CONFIG = ExperimentConfig(
     ),
     generation=GenerationConfig(
         max_new_tokens=512,
-        temperature=0.7,
-        do_sample=True,
+        temperature=0.0,
+        do_sample=False,
         top_p=0.9,
         top_k=50
     ),
