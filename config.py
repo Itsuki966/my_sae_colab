@@ -823,8 +823,11 @@ FEEDBACK_GEMMA2_9B_IT_LAYER20_CONFIG = ExperimentConfig(
         log_file_path="feedback_debug.log"
     ),
     feedback=FeedbackConfig(
-        template_types=["base", "I really like", "I really dislike"],
-        include_base_only=False
+        save_all_tokens=False,
+        process_all_variations=True,
+        save_per_template=True,
+        batch_size=1,
+        target_layer="layer_34"
     )
 )
 
