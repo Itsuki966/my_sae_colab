@@ -765,6 +765,134 @@ FEEDBACK_GEMMA2_9B_IT_CONFIG = ExperimentConfig(
         target_layer="layer_34"
     )
 )
+
+# Feedback実験 Gemma-2-9b-it Layer 20（A100最適化）
+FEEDBACK_GEMMA2_9B_IT_LAYER20_CONFIG = ExperimentConfig(
+    model=ModelConfig(
+        name="gemma-2-9b-it",
+        sae_release="gemma-scope-9b-it-res-canonical",
+        sae_id="layer_20/width_131k/canonical",
+        hook_name="blocks.20.hook_resid_post",
+        device="cuda",
+        use_accelerate=True,
+        use_fp16=False,
+        use_bfloat16=True,
+        low_cpu_mem_usage=True,
+        device_map="auto",
+        use_gradient_checkpointing=False,
+        attn_implementation="eager",
+        torch_compile=False,
+        memory_fraction=0.85,
+        enable_memory_efficient_attention=True
+    ),
+    data=DataConfig(
+        dataset_path="eval_dataset/feedback.jsonl",
+        sample_size=10,
+        random_seed=42
+    ),
+    generation=GenerationConfig(
+        max_new_tokens=512,
+        temperature=0.7,
+        do_sample=True,
+        top_p=0.9,
+        top_k=50,
+    ),
+    prompts=PromptConfig(
+        use_detailed_prompts=False,
+        use_few_shot=False,
+        initial_prompt_template="{prompt}"
+    ),
+    analysis=AnalysisConfig(
+        top_k_features=20,
+        activation_threshold=0.1,
+        sycophancy_threshold=0.3
+    ),
+    visualization=VisualizationConfig(
+        figure_width=1400,
+        figure_height=1000,
+        color_scheme="viridis",
+        save_plots=True,
+        plot_directory="plots/feedback"
+    ),
+    debug=DebugConfig(
+        verbose=True,
+        show_prompts=True,
+        show_responses=True,
+        show_activations=False,
+        log_to_file=True,
+        log_file_path="feedback_debug.log"
+    ),
+    feedback=FeedbackConfig(
+        template_types=["base", "I really like", "I really dislike"],
+        include_base_only=False
+    )
+)
+
+# Feedback実験 Gemma-2-9b-it Layer 9（A100最適化）
+FEEDBACK_GEMMA2_9B_IT_LAYER9_CONFIG = ExperimentConfig(
+    model=ModelConfig(
+        name="gemma-2-9b-it",
+        sae_release="gemma-scope-9b-it-res-canonical",
+        sae_id="layer_9/width_131k/canonical",
+        hook_name="blocks.9.hook_resid_post",
+        device="cuda",
+        use_accelerate=True,
+        use_fp16=False,
+        use_bfloat16=True,
+        low_cpu_mem_usage=True,
+        device_map="auto",
+        use_gradient_checkpointing=False,
+        attn_implementation="eager",
+        torch_compile=False,
+        memory_fraction=0.85,
+        enable_memory_efficient_attention=True
+    ),
+    data=DataConfig(
+        dataset_path="eval_dataset/feedback.jsonl",
+        sample_size=10,
+        random_seed=42
+    ),
+    generation=GenerationConfig(
+        max_new_tokens=512,
+        temperature=0.7,
+        do_sample=True,
+        top_p=0.9,
+        top_k=50,
+    ),
+    prompts=PromptConfig(
+        use_detailed_prompts=False,
+        use_few_shot=False,
+        initial_prompt_template="{prompt}"
+    ),
+    analysis=AnalysisConfig(
+        top_k_features=20,
+        activation_threshold=0.1,
+        sycophancy_threshold=0.3
+    ),
+    visualization=VisualizationConfig(
+        figure_width=1400,
+        figure_height=1000,
+        color_scheme="viridis",
+        save_plots=True,
+        plot_directory="plots/feedback"
+    ),
+    debug=DebugConfig(
+        verbose=True,
+        show_prompts=True,
+        show_responses=True,
+        show_activations=False,
+        log_to_file=True,
+        log_file_path="feedback_debug.log"
+    ),
+    feedback=FeedbackConfig(
+        save_all_tokens=False,  # デフォルトは最後のトークンのみ
+        process_all_variations=True,
+        save_per_template=True,
+        batch_size=1,
+        target_layer="layer_34"
+    )
+)
+
 # Intervention実験 Gemma-2-9b-it（A100最適化）
 INTERVENTION_GEMMA2_9B_IT_CONFIG = ExperimentConfig(
     model=ModelConfig(
